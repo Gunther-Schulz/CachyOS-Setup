@@ -1,0 +1,80 @@
+#
+# This file is parsed by pam_env module
+#
+# Syntax: simple "KEY=VAL" pairs on separate lines
+#
+
+NVD_BACKEND=direct
+__VK_LAYER_NV_optimus=NVIDIA_only
+VK_LAYER_PATH=/usr/share/vulkan/implicit_layer.d
+CUDA_VISIBLE_DEVICES=0
+__NV_PRIME_RENDER_OFFLOAD=1 
+
+EGL_PLATFORM=wayland
+
+WGPU_BACKEND=vulkan
+
+MESA_LOADER_DRIVER_OVERRIDE=nvidia  
+# __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json # this breaks the gdm 
+
+# NVIDIA-specific GBM backend
+GBM_BACKEND=nvidia-drm
+
+# Make screenshare work in Chrome
+#__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
+# NVIDIA Vulkan support
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+
+# Enable OpenGL performance improvements
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+
+
+## Force the use of the NVIDIA PRIME Render Offload
+__NV_PRIME_RENDER_OFFLOAD=1
+__NV_PRIME_RENDER_OFFLOAD_PROVIDER=NVIDIA-G0
+# Disable automatic GPU switching
+__NV_PRIME_RENDER_OFFLOAD_PROVIDER_OPTIONS=0x1
+
+# Force NVIDIA for VDPAU
+VDPAU_DRIVER=nvidia
+
+# Force NVIDIA for VA-API
+# LIBVA_DRIVER_NAME=nvidia
+
+
+
+# Enable asynchronous page flips (Clutter backend)
+CLUTTER_BACKEND=wayland
+
+# Enable native Wayland support for GTK applications
+GDK_BACKEND=wayland
+
+# GTK_USE_PORTAL=1
+
+# Enable Wayland support for Electron-based applications
+ELECTRON_OZONE_PLATFORM_HINT=auto
+ELECTRON_ENABLE_FEATURES=UseOzonePlatform,WaylandWindowDecorations
+ELECTRON_OZONE_PLATFORM=wayland
+
+# Enable native Wayland support for Qt applications
+QT_QPA_PLATFORM=wayland
+
+QT_QPA_PLATFORMTHEME=gtk2
+
+# Disable the triple buffering in Mutter (GNOME's window manager) to reduce latency
+# MUTTER_DEBUG_DISABLE_TRIPLE_BUFFER=1
+
+# Use EGL Streams backend if you experience issues with GBM backend
+# Only use this if you've confirmed it's better for your setup
+# Uncomment the next line if switching to EGLStreams
+# WLR_BACKENDS=eglstreams
+
+# Custom configuration home directory
+# XDG_CONFIG_HOME="$HOME/.config"
+
+# Enable Wayland support for Mozilla applications (e.g., Firefox)
+MOZ_ENABLE_WAYLAND=1
+
+# Increase Nvidia's shader cache size to 12GB
+__GL_SHADER_DISK_CACHE_SIZE=12000000000
