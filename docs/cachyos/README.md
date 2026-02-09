@@ -8,7 +8,8 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 
 | Topic | Path |
 |-------|------|
-| **NVIDIA** | [nvidia/](nvidia/) — Wayland stutter (DDC, mutter), PowerMizer, OpenRGB, RTX 5090 + IOMMU |
+| **NVIDIA** | [nvidia/](nvidia/) — PowerMizer, OpenRGB, RTX 5090 + IOMMU |
+| **Mouse stutter** | [mouse-stutter.md](mouse-stutter.md) — DDC, mutter, Solaar, Bluetooth |
 | **System** | [system/](system/) — Swappiness, Limine, environment, GRUB custom, vm.max_map_count |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |

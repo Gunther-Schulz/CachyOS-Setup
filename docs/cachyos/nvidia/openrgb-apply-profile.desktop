@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=OpenRGB apply profile
+Comment=Load and apply OpenRGB profile at login, then exit
+Exec=openrgb -p "my profile"
+X-GNOME-Autostart-enabled=true

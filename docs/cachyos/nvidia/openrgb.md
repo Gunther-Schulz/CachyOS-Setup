@@ -1,6 +1,6 @@
 # OpenRGB with i2c_dev Blacklist (9950X3D)
 
-Keep the **i2c_dev blacklist** for DDC (keyboard repeat / possible stutter). Use OpenRGB on demand by loading the module only when needed.
+Keep the **i2c_dev blacklist** when you need it for DDC (see [Mouse stutter](../mouse-stutter.md)). Use OpenRGB on demand by loading the module only when needed.
 
 **On demand (recommended):**
 ```bash
@@ -25,30 +25,26 @@ Keyboard repeat issue may return.
 
 ---
 
-**Apply profile on boot (no i2c needed):** Because the GPU (and some devices) don't save to device, OpenRGB must **stay running** to hold the profile. Run it at login **minimized to tray** (no full GUI) so it loads the profile and keeps it applied.
+**Apply profile at login (no i2c needed):** Run `openrgb -p "PROFILE_NAME"` from session autostart so it gets DISPLAY and exits on its own (no timeout hack). Profile name must match the `.orp` filename (without `.orp`) in `~/.config/OpenRGB/` exactly (e.g. `my profile.orp` → `"my profile"`).
 
-**Do not create a new desktop file.** Copy the system one and modify that copy (icon, StartupWMClass, etc. stay correct).
+Reference desktop file (in repo: `docs/cachyos/nvidia/openrgb-apply-profile.desktop`):
 
-**Autostart (run at login):**
-
-```bash
-mkdir -p ~/.config/autostart && cp /usr/share/applications/org.openrgb.OpenRGB.desktop ~/.config/autostart/openrgb-profile.desktop
+```ini
+[Desktop Entry]
+Type=Application
+Name=OpenRGB apply profile
+Comment=Load and apply OpenRGB profile at login, then exit
+Exec=openrgb -p "my profile"
+X-GNOME-Autostart-enabled=true
 ```
 
-Then edit `~/.config/autostart/openrgb-profile.desktop`: set `Name=OpenRGB (profile)`, `Comment=...`, `Exec=openrgb --startminimized --profile "PROFILE_NAME"` (use the exact profile name as in `~/.config/OpenRGB/*.orp`, e.g. `"my profile"` for `my profile.orp`), and add `X-GNOME-Autostart-enabled=true`.
-
-**Applications menu (launch from app list):**
+Install (no sudo): copy to autostart. GNOME runs it at login; it appears in **Settings → Apps → Startup** so you can turn it off there if needed.
 
 ```bash
-cp /usr/share/applications/org.openrgb.OpenRGB.desktop ~/.local/share/applications/openrgb-profile.desktop
+mkdir -p ~/.config/autostart
+cp docs/cachyos/nvidia/openrgb-apply-profile.desktop ~/.config/autostart/
 ```
 
-Edit `~/.local/share/applications/openrgb-profile.desktop` the same way (Name, Comment, Exec; omit `X-GNOME-Autostart-enabled` if you don’t want autostart). Then:
+If your profile name is not `my profile`, edit `Exec=openrgb -p "your profile name"` in the copied file.
 
-```bash
-update-desktop-database ~/.local/share/applications
-```
-
-**Changes to make in the copied file:** `Name=OpenRGB (profile)`, `Comment=...`, `Exec=openrgb --startminimized --profile "PROFILE_NAME"` — the profile name must match the `.orp` filename (without `.orp`) in `~/.config/OpenRGB/` exactly (e.g. file `my profile.orp` → `--profile "my profile"`). For autostart only, add `X-GNOME-Autostart-enabled=true`. Leave Icon, StartupWMClass, TryExec, etc. as in the system file.
-
-GNOME reads `~/.config/autostart/` automatically — once the file is there, it runs at next login and shows in **Settings → Apps → Startup**. To disable, remove the file or turn it off there. Quit OpenRGB from the tray when you want it to stop.
+If you previously used the systemd service, disable it: `systemctl --user disable openrgb-profile.service`
