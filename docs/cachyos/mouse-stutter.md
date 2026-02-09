@@ -47,3 +47,11 @@ sudo reboot
 ## 5. Turn off Bluetooth
 
 Turn off Bluetooth to rule out interference (not sure if the OS switch is sufficient; try disabling the service or adapter if needed).
+
+---
+
+## Stutter triggered by GPU load, persists after app exit
+
+**Observed:** No stutter → start wan2gp and generate a video → mouse stutters during generation → stutter **persists** after generation finishes and after exiting wan2gp.
+
+**Workaround:** Power-cycling the mouse (unplug/replug USB or turn receiver off/on, e.g. MX Master) can clear the stutter — suggests the bad state was in the input path (USB/hid or compositor’s view of that device). If that doesn’t help, try: PowerMizer prefer max performance; patched mutter and/or DDC block; log out and back in (or reboot).
