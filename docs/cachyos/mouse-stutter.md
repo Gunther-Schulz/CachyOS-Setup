@@ -6,7 +6,7 @@ One or more of these can help alleviate mouse stuttering and keyboard sticking/r
 
 ## 1. Install patched mutter
 
-**Mutter render-source patch (LP #2081140):** See `mutter-49-render-source/README.md` at repo root if present.
+**Mutter render-source patch (LP #2081140):** See `content/mutter-49-render-source/README.md` in this repo (build, install, revert).
 
 **GNOME / AUR:** gnome-shell-performance or mutter-performance from AUR have been tested. 13.x stutter reported again, 12.x smooth. Mouse stutters reported with Heaven/Unigine + Telegram panel at high GPU load; Brave at 100% didn’t reproduce. On Cosmic, mouse issues in doc reportedly gone.
 

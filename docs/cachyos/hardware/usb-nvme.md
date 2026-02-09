@@ -32,3 +32,9 @@ Replace `sda` and `2-5` with your block device and USB path (`readlink -f /sys/b
 Permanent: udev rules in `/etc/udev/rules.d/99-nvme-usb-performance.rules` for `0bda:9210` (disable USB power for that vendor/product; set `queue/scheduler=none`, `queue/read_ahead_kb=1024`). Then `sudo udevadm control --reload-rules && sudo udevadm trigger`, reconnect or reboot.
 
 **Verify:** `sudo hdparm -tT /dev/sda` or `sudo dd if=/dev/sda of=/dev/null bs=1M count=2000 status=progress`.
+
+---
+
+**Progressive speed degradation (UNTESTED):** Transfer starts fast (400–500 MB/s) then degrades to 15–30 MB/s over time; reconnecting temporarily restores speed. Realtek RTL9210 + Linux UAS can cause this. Try the UAS quirk above (`usb-storage.quirks=0bda:9210:u`); verify with `lsusb -t` that driver is `usb-storage` not `uas`. May slightly reduce peak speed but can stabilize sustained transfers.
+
+**If still slow or degrading:** Disable IOMMU (`iommu=soft amd_iommu=off` in kernel cmdline); update motherboard BIOS; try different USB ports/controllers; consider non-RTL9210 enclosure (e.g. ASMedia ASM2364, JMicron).
