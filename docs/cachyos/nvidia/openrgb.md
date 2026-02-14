@@ -1,6 +1,6 @@
 # OpenRGB with i2c_dev Blacklist (9950X3D)
 
-Keep the **i2c_dev blacklist** when you need it for DDC (see [Mouse stutter](../mouse-stutter.md)). Use OpenRGB on demand by loading the module only when needed.
+Keep the **i2c_dev blacklist** when you need it for DDC (see [Mouse stutter](../peripherals/mouse-stutter.md)). Use OpenRGB on demand by loading the module only when needed.
 
 **On demand (recommended):**
 ```bash
