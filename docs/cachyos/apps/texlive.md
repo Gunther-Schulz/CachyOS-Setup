@@ -1,7 +1,10 @@
 # TexLive
 
-`yay -S texlive-full`. `sudo pacman -S perl-file-homedir perl-yaml-tiny` for LaTeX Workshop (VS Code). Verify: `tex --version`.
+1. **Install:** `yay -S texlive-full`
+   - If you get a file conflict on `/usr/bin/dvisvgm`, remove the standalone package first: `sudo pacman -R dvisvgm`, then retry.
 
-**LaTeX Workshop (VS Code):** Use `latexmk` with `-synctex=1 -interaction=nonstopmode -file-line-error -pdf` in settings.
+2. **Verify:** `pdflatex --version`
 
-**Asymptote 404 on CachyOS:** Install from Arch extra first: `sudo pacman -S extra/asymptote`, then `yay -S texlive-full`.
+3. **VS Code LaTeX Workshop (optional):** `sudo pacman -S perl-file-homedir perl-yaml-tiny`. Settings: `latexmk` with `-synctex=1 -interaction=nonstopmode -file-line-error -pdf`.
+
+4. **Asymptote 404 on CachyOS:** `sudo pacman -S extra/asymptote` before `yay -S texlive-full`.

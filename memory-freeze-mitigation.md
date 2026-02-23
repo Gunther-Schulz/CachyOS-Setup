@@ -52,6 +52,8 @@ echo 'vm.swappiness = 10
 vm.watermark_scale_factor = 100
 vm.min_free_kbytes = 131072' | sudo tee /etc/sysctl.d/99-memory-freeze-mitigation.conf
 sudo sysctl -p /etc/sysctl.d/99-memory-freeze-mitigation.conf
+# If the file already existed without vm.swappiness, add and apply it:
+# echo 'vm.swappiness = 10' | sudo tee -a /etc/sysctl.d/99-memory-freeze-mitigation.conf && sudo sysctl -p /etc/sysctl.d/99-memory-freeze-mitigation.conf
 ```
 
 ---
@@ -71,18 +73,20 @@ sudo systemctl enable --now earlyoom
 
 **In active testing.**
 
-Cachyos (vendor) sets **zram-size = ram** in `/usr/lib/systemd/zram-generator.conf`. Override via the **admin** drop-in dir; later filename wins for same option.
+Cachyos (vendor) sets **zram-size = ram** in `/usr/lib/systemd/zram-generator.conf`. Override via the **admin** drop-in dir: **`/etc/systemd/zram-generator.conf.d/`** (note: `zram-generator.conf.d`, not `zram-generator.d`). Later filename wins for same option.
 
 With disk swap as overflow, **16–32 GiB** zram is a good range. Do **not** set zram back to `ram` (60G) because: zram stores compressed data **in RAM**, so a 60G zram can tie up a large chunk of your 60G RAM when it fills. You’d still have apps and zram competing for the same RAM; disk swap is used only when zram is full or the kernel moves pages to lower-priority swap. Smaller zram (e.g. 32G) means less RAM in the compressed pool and more pressure spilling to disk, which actually frees RAM. We avoid “all swap in RAM” situation.
 
 ```bash
 sudo mkdir -p /etc/systemd/zram-generator.conf.d
 echo '[zram0]
-zram-size = 32G
+zram-size = 24576
 swap-priority = 100' | sudo tee /etc/systemd/zram-generator.conf.d/90-zram-size.conf
 ```
 
-Reboot so zram is recreated. After reboot: `swapon --show` should show zram0 pri 100 and disk swap pri 50.
+(32768 MB = 32 GiB; using MB avoids parser bugs that can cause vmalloc errors with `32G`.) Then `sudo systemctl daemon-reload` and reboot.
+
+Reboot so zram is recreated. After reboot: `swapon --show` should show zram0 pri 100 and disk swap pri 50. To confirm zram isn’t failing: `journalctl -b -k --no-pager | grep -i zram` should show no “vmalloc error” or “exceeds total pages”.
 
 ---
 
@@ -96,3 +100,15 @@ If you no longer get freezes and swap stays modest (e.g. &lt; 7 GB under stress)
 4. **Smaller zram (16 GB)** — With 64 GB disk swap, overflow is on disk; zram no longer competes for as much RAM.
 
 earlyoom is a safety net; if no process ever gets killed, pressure likely never reached the point where it would have fired — the other changes kept the system away from that point.
+
+---
+
+## If the session still dies (e.g. logout / display crash)
+
+If `user@1000.service` shows “Main process exited, code=killed, status=9/KILL” and the whole session tears down, check whether the OOM killer was the cause:
+
+```bash
+journalctl -b -k --no-pager | grep -i -E 'oom|killed process|out of memory'
+```
+
+If you see “Killed process …” for a large consumer, the kernel ran out of memory and killed it (often the session leader). Fixing zram (so it doesn’t vmalloc-fail) and keeping a sane zram size plus disk swap and VM tuning should reduce how often that happens. Optionally run heavy workloads (e.g. vLLM) in a cgroup with a memory limit so the kernel kills that scope instead of the whole session.
