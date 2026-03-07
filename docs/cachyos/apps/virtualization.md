@@ -16,4 +16,6 @@ echo "blacklist kvm_amd" | sudo tee /etc/modprobe.d/kvm_amd.conf
 
 **Taskbar (GNOME):** Copy desktop file, add `StartupWMClass=VirtualBox Machine` so VM windows group under same icon.
 
+**5K host:** If Windows won't start when the host monitor is set to 5K, set the host to 2K (or 4K), start the VM so Windows boots, then switch the host back to 5K. After that the VM can be started with the host at 5K.
+
 **Troubleshooting:** Correct linux-headers for kernel; `sudo vboxreload` after updates. If password not accepted at Win11 login, wait a few minutes and retry.
