@@ -32,17 +32,27 @@ Use one receiver/dongle for both mouse and keyboard instead of separate receiver
 
 **Cause:** i2c/DDC traffic over NVIDIA DisplayPort can cause bus contention. Blocking DDC may not fix stutter but often fixes the keyboard repeat issue.
 
-**Fix:** Blacklist `i2c_dev` so I2C (including DDC) isn't exposed to userspace. Monitor detection/resolution still work.
+**Current:** We no longer blacklist `i2c_dev` (needed for XG27JCG DDC/Frame Rate Boost). **Observe if mouse stutter returns.** If it does, re-apply the blacklist below.
 
+**To re-blacklist (if stutter returns):**
 ```bash
-echo 'blacklist i2c_dev' | sudo tee /etc/modprobe.d/blacklist-i2c-dev.conf
+echo 'blacklist i2c_dev' | sudo tee /etc/modprobe.d/blacklist-i2c.conf
 sudo mkinitcpio -P
 sudo reboot
 ```
 
-**Verify:** `lsmod | grep i2c_dev` shows nothing.
+**To un-blacklist:**
+```bash
+sudo rm /etc/modprobe.d/blacklist-i2c.conf
+sudo mkinitcpio -P
+sudo reboot
+```
 
-**If you use OpenRGB:** Keep the blacklist and load `i2c_dev` on demand when running OpenRGB; see [OpenRGB with i2c_dev blacklist](../nvidia/openrgb.md).
+**Verify blacklist active:** `lsmod | grep i2c_dev` shows nothing. **Verify un-blacklisted:** `i2c_dev` loads when ddcutil or OpenRGB needs it (or at boot).
+
+**Find blacklist file (if path differs):** `grep -r i2c /etc/modprobe.d/`
+
+**If you use OpenRGB:** See [OpenRGB](../nvidia/openrgb.md).
 
 ---
 

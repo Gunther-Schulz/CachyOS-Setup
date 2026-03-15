@@ -35,6 +35,11 @@ __VK_LAYER_NV_optimus=NVIDIA_only
 
 ## Shader cache (optional)
 __GL_SHADER_DISK_CACHE_SIZE=12000000000
+
+## GStreamer — demote NVIDIA encoders
+# nvh264enc registers at primary+1 (257), causing GNOME screen recorder to pick
+# it over software encoders, producing corrupt videos (40x40, 0fps, ~110h duration)
+GST_PLUGIN_FEATURE_RANK=nvh264enc:NONE,nvh265enc:NONE,nvav1enc:NONE,nvjpegenc:NONE,nvautogpuh264enc:NONE,nvautogpuh265enc:NONE,nvautogpuav1enc:NONE,nvautogpujpegenc:NONE
 ```
 
 **Troubleshooting GNOME:** `export GSK_RENDERER=cairo` to disable GPU rendering.

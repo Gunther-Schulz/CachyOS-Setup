@@ -1,8 +1,8 @@
-# OpenRGB with i2c_dev Blacklist (9950X3D)
+# OpenRGB (9950X3D)
 
-Keep the **i2c_dev blacklist** when you need it for DDC (see [Mouse stutter](../peripherals/mouse-stutter.md)). Use OpenRGB on demand by loading the module only when needed.
+i2c_dev is no longer blacklisted (needed for XG27JCG DDC). OpenRGB can use I2C when the module is loaded. If you re-blacklist for [mouse stutter](../peripherals/mouse-stutter.md), load on demand:
 
-**On demand (recommended):**
+**On demand (if i2c_dev blacklisted):**
 ```bash
 sudo modprobe i2c-dev
 # run OpenRGB, set colors

@@ -2,13 +2,13 @@
 
 **In active testing.**
 
-**Symptom:** Random multi-second full freezes of the game (only the game, rest of system responsive, audio continues). No pattern to combat/load — happens throughout sessions. Reproducible every session.
+**Symptom:** Random multi-second full freezes of the game (only the game, rest of system responsive, audio continues). No pattern to combat/load — happens throughout sessions. Reproducible every session. Issue has existed for over half a year.
 
 ---
 
-## Suspect 1: Split lock detection — **Most likely NOT the cause**
+## Suspect 1: Split lock detection — **Ruled out; reverted**
 
-Applied `split_lock_detect=off`; freeze still occurred. Correlated with freeze timestamps but not causal.
+Applied `split_lock_detect=off`; freeze still occurred. Split lock events correlated with freeze timestamps but were not causal. The kernel parameter has been reverted to default (split lock detection re-enabled).
 
 **Theory:** UE5/Wine doing unaligned atomic memory operations (split locks) on the `GameThread` and `FChunkCacheWork` threads. The kernel's split lock detection fires a `#DB` hardware exception on every occurrence. Bursts correlate 1:1 with freeze timestamps in kernel log.
 
@@ -30,7 +30,10 @@ sudo reboot
 
 ## Suspect 2: VKD3D shader cache — **TESTING candidate**
 
-**Evidence:** MangoHud captured 5.1 s single-frame freeze at 03:06:32. VKD3D log shows "Flushing disk cache" from pipeline library. Matches [vkd3d-proton #2793](https://github.com/HansKristian-Work/vkd3d-proton/issues/2793): NVIDIA RTX 50xx + driver 590.xx + VKD3D pipeline cache → multi-second freezes.
+**Evidence:** MangoHud captured 5.1 s single-frame freeze at 2026-03-10 03:06:32. VKD3D log shows "Flushing disk cache" from pipeline library. Matches [vkd3d-proton #2793](https://github.com/HansKristian-Work/vkd3d-proton/issues/2793
+
+Linked: [NVIDIA #880 — RTX 5090 freezes presentation 3–5 seconds](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880)  
+https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880): NVIDIA RTX 50xx + driver 590.xx + VKD3D pipeline cache → multi-second freezes.
 
 **Fix:** Add to Steam launch options:
 
