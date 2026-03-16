@@ -32,9 +32,14 @@ The actual exe is `Stray-Win64-Shipping.exe` (64-bit, DX11).
 
 ## 4. Run reshade-steam-proton.sh
 
+For iMMERSE Ultimate addons (`.addon64` files), use the full addon support build:
+
 ```fish
-reshade-steam-proton.sh
+RESHADE_ADDON_SUPPORT=1 reshade-steam-proton.sh
 ```
+
+Without this, the script downloads the limited open-source build which skips `.addon`
+files. Only use the addon build for single-player games — anti-cheat may flag it.
 
 Interactive prompts:
 1. Type `i` to install
