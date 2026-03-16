@@ -38,3 +38,40 @@ Permanent: udev rules in `/etc/udev/rules.d/99-nvme-usb-performance.rules` for `
 **Progressive speed degradation (UNTESTED):** Transfer starts fast (400–500 MB/s) then degrades to 15–30 MB/s over time; reconnecting temporarily restores speed. Realtek RTL9210 + Linux UAS can cause this. Try the UAS quirk above (`usb-storage.quirks=0bda:9210:u`); verify with `lsusb -t` that driver is `usb-storage` not `uas`. May slightly reduce peak speed but can stabilize sustained transfers.
 
 **If still slow or degrading:** Disable IOMMU (`iommu=soft amd_iommu=off` in kernel cmdline); update motherboard BIOS; try different USB ports/controllers; consider non-RTL9210 enclosure (e.g. ASMedia ASM2364, JMicron).
+
+---
+
+## UAS Stability Crash (I/O errors, read-only filesystem)
+
+**Problem:** External USB NVMe drive (RTL9210 `0bda:9210`) randomly remounts read-only or disconnects mid-use. Filesystem goes `emergency_ro`.
+
+**Symptoms in `dmesg`:**
+- `uas_eh_abort_handler` storm — all tags aborted simultaneously
+- `uas_eh_device_reset_handler` — USB device reset
+- Repeated abort/reset cycles
+- ext4 (or other fs) reports I/O errors and switches to read-only
+
+**Cause:** UAS (USB Attached SCSI) protocol instability with RTL9210 bridge chips. The command queuing in UAS can overwhelm the bridge, triggering mass aborts and device resets.
+
+**Fix — Disable UAS via modprobe (falls back to stable USB mass-storage/BOT):**
+
+```bash
+# Create modprobe config to blacklist UAS for this device
+sudo bash -c 'echo "options usb-storage quirks=0bda:9210:u" > /etc/modprobe.d/disable-uas-realtek.conf'
+
+# Rebuild initramfs so it takes effect on boot
+sudo mkinitcpio -P
+
+# Unplug and replug the drive
+```
+
+**Verify UAS is no longer used:**
+
+```bash
+lsusb -t | grep -A2 "Driver"
+# Should show "usb-storage" instead of "uas"
+```
+
+**Tradeoff:** The `u` quirk flag disables UAS. You lose command queuing (multiple I/O operations in flight), but USB bandwidth (~1,000 MB/s for USB 3.2 Gen 2) is still the bottleneck. In practice ~5-10% loss on random small I/O; sequential throughput is unaffected. Stability improvement is massive.
+
+**Alternative — kernel cmdline method:** Add `usb-storage.quirks=0bda:9210:u` to bootloader cmdline instead (see Fix 1 above). Both methods achieve the same result; the modprobe config is simpler to manage.
