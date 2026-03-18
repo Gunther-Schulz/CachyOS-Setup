@@ -1,5 +1,11 @@
 # VLC
 
+**Resume playback:** 0=Never, 1=Ask, 2=Always. Or via Tools → Preferences → Interface → "Continue playback".
+```bash
+sed -i 's/^#\?qt-continue=.*/qt-continue=2/' ~/.config/vlc/vlcrc && grep '^qt-continue=' ~/.config/vlc/vlcrc
+```
+Expected output: `qt-continue=2`
+
 **Disable systray:** Tools → Preferences → Interface → uncheck "Show systray icon".
 
 **Artifacts on Cosmic/Wayland + NVIDIA:** Disable HW accel, use OpenGL output:
