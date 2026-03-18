@@ -1,7 +1,8 @@
 # TexLive
 
 1. **Install:** `yay -S texlive-full`
-   - If you get a file conflict on `/usr/bin/dvisvgm`, remove the standalone package first: `sudo pacman -R dvisvgm`, then retry.
+   - If you get a file conflict on `/usr/bin/dvisvgm`, remove first: `sudo pacman -R asymptote texlive-binextra texlive-latex texlive-basic texlive-bin texlive-latexrecommended dvisvgm`, then retry.
+   - If rsync fails with "file has vanished" (exit 24), the PKGBUILD needs the exit-24 tolerance patch.
 
 2. **Verify:** `pdflatex --version`
 
