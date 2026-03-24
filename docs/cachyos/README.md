@@ -13,7 +13,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **System** | [system/](system/) — Swappiness, Limine, environment, GRUB custom, vm.max_map_count |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
-| **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, Cider |
+| **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, Cider, [Claude Code](apps/claude-code.md) |
 | **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, Bluetooth, [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, PS4, Chrome flags |
 | **Audio** | [audio/](audio/) — PipeWire, Helvum, Bitwig, Jamulus |
