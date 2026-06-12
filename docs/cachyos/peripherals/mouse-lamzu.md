@@ -1,5 +1,7 @@
 # LAMZU Maya X Mouse
 
+**Machine:** Desktop.
+
 Configure via [Aurora web interface](https://www.lamzu.net/#/project/items). Need udev rules for dongle and direct USB.
 
 **Get IDs:** `lsusb | grep -i LAMZU` — run with dongle only, then with mouse connected via USB. Example: dongle `373e:001e`, mouse `373e:001c`. Give permission to both for firmware updates.

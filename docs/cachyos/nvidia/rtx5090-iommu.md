@@ -1,5 +1,7 @@
 # NVIDIA RTX 5090 (Blackwell) + AMD IOMMU
 
+**Machine:** Desktop (RTX 5090).
+
 **Problem:** RTX 5090 (and other Blackwell) can cause freezes/hard reboots when loading large models or heavy GPU load on bare-metal AMD (Ryzen 7000+) with IOMMU in default "Translated" mode.
 
 **Cause:** NVIDIA drivers don’t support AMD IOMMU in Translated mode on bare metal.

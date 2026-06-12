@@ -1,5 +1,7 @@
 # OpenRGB (9950X3D)
 
+**Machine:** Desktop.
+
 i2c_dev is no longer blacklisted (needed for XG27JCG DDC). OpenRGB can use I2C when the module is loaded. If you re-blacklist for [mouse stutter](../peripherals/mouse-stutter.md), load on demand:
 
 **On demand (if i2c_dev blacklisted):**

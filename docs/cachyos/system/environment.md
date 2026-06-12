@@ -1,5 +1,7 @@
 # Environment (NVIDIA / Wayland)
 
+**Machine:** Desktop (NVIDIA-primary). ⚠️ Do NOT apply wholesale on the laptop — the nvidia-primary vars force the session onto the dGPU and fight Hybrid mode. Laptop version: [laptop/environment-hybrid.md](../laptop/environment-hybrid.md).
+
 Add to `/etc/environment` (or equivalent). Use for NVIDIA-only or PRIME offload setups.
 
 ```ini

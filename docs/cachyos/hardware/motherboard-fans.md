@@ -1,5 +1,7 @@
 # Motherboard Fans and Sensors (ASUS B850-G, Ryzen 9950X3D)
 
+**Machine:** Desktop (B850-G).
+
 Super I/O: **Nuvoton NCT6799**; kernel driver **nct6775** (read/write via ASUS WMI). Module does **not** auto-load.
 
 **Load at boot:**

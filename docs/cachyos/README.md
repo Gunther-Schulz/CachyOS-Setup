@@ -2,7 +2,12 @@
 
 Streamlined reference from a single-source doc. **Reference:** `content/cachyos-setup/cachyos.md`.
 
-**System context:** AMD Ryzen 9 9950X3D, ASUS ROG STRIX B850-G GAMING WIFI. Some notes (e.g. motherboard fans, nct6775) are specific to this desktop.
+**Systems covered (two machines):**
+
+- **Desktop** — AMD Ryzen 9 9950X3D, ASUS ROG STRIX B850-G GAMING WIFI, RTX 5090. *(Currently down — RAM failure.)*
+- **Laptop** — ASUS TUF Gaming A16 **FA607PV**: Ryzen 9 7845HX + RTX 4060 + Radeon iGPU.
+
+**Convention:** machine-specific docs carry a `**Machine:**` tag at the top (Desktop / Laptop / Both); untagged docs apply to both. Everything in [`laptop/`](laptop/) is the laptop; [`fan-control/`](../../fan-control/) is the desktop.
 
 ## Index
 
@@ -17,7 +22,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, Bluetooth, [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, PS4, Chrome flags |
 | **Audio** | [audio/](audio/) — PipeWire, Helvum, Bitwig, Jamulus |
-| **Laptop** | [laptop/](laptop/) — Prevent apps using amdgpu, ASUS ROG, S3 sleep, GNOME suspend |
+| **Laptop** | [laptop/](laptop/) — FA607PV: [GPU MUX + suspend](laptop/gpu-mux-suspend.md), [display switching](laptop/display-switching.md), [hybrid /etc/environment](laptop/environment-hybrid.md), ASUS ROG/TUF, prevent apps using amdgpu, S3 sleep |
 | **Recovery** | [recovery/](recovery/) — Clone drive, GRUB reinstall, paste logs |
 | **Issues** | [issues/](issues/) — Known issues, Cursor GPU |
 | **Todo** | [todo.md](todo.md) |

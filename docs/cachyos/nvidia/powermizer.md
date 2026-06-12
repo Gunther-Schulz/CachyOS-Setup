@@ -1,5 +1,7 @@
 # NVIDIA PowerMizer — Choppy Mouse at Low/Transitioning GPU Load
 
+**Machine:** Desktop. ⚠️ Unverified — did nothing when last tested; TODO: check if still active and try disabling.
+
 **Symptoms:** Mouse (and sometimes display) choppy when GPU is at low or changing load; smooth at full idle or high load.
 
 **Cause:** PowerMizer switches P-states; transitions can stall the Wayland compositor.

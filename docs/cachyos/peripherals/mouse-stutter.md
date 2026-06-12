@@ -1,16 +1,20 @@
 # Mouse Stutter and Keyboard Sticking/Repeating
 
+**Machine:** Desktop.
+
 One or more of these can help alleviate mouse stuttering and keyboard sticking/repeating keys.
 
 **Status:** After applying the measures below, stutter has not returned for several days. In retrospect the mouse was always somewhat sluggish; it only became obvious when it got really bad. After the fix, overshooting UI elements for a few days was normal until re-adapting to a responsive mouse. Gaming did not seem to be affected even when the desktop felt sluggish.
 
+**Best guess at the actual fix:** §2/§3 — re-pairing with Solaar and/or using a **single** receiver for both mouse and keyboard. The mutter patch (§1) is likely unrelated (and is upstream now). Several things changed at once, so unconfirmed.
+
 ---
 
-## 1. Install patched mutter
+## 1. Patched mutter (likely no longer needed)
 
-**Mutter render-source patch (LP #2081140):** See `content/mutter-49-render-source/README.md` in this repo (build, install, revert).
+The `LP #2081140` render-source fix is **upstream in current mutter** — no patch or build needed anymore. (The old `content/mutter-49-render-source/` build guide isn't in this repo.) Probably wasn't the real fix here anyway — see Status above.
 
-**GNOME / AUR:** gnome-shell-performance or mutter-performance from AUR have been tested. 13.x stutter reported again, 12.x smooth. Mouse stutters reported with Heaven/Unigine + Telegram panel at high GPU load; Brave at 100% didn't reproduce. On Cosmic, mouse issues in doc reportedly gone.
+**GNOME / AUR (historical):** gnome-shell-performance / mutter-performance from AUR were tried — 13.x stutter returned, 12.x smooth; stutter seen with Heaven/Unigine + Telegram at high GPU load.
 
 ---
 

@@ -1,5 +1,7 @@
 # Hide AMD Desktop APU (Integrated Graphics)
 
+**Machine:** Desktop.
+
 **Problem:** AMD iGPU still visible after BIOS disable (e.g. Raphael), causing GLX/ BadValue issues.
 
 **Fix:** udev rule to remove the APU from PCI enumeration. Get IDs: `lspci -nn | grep "AMD.*Raphael"` (e.g. 1002:164e).

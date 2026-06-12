@@ -1,5 +1,7 @@
 # Sleep / Wake Issues
 
+**Machine:** Desktop (AM5/B850-G; S3 deep sleep). ⚠️ Do NOT apply on the laptop — it blacklists `asus_wmi`, which the laptop needs for `asusctl` (GPU MUX + keyboard).
+
 ## spd5118 (DDR5 temp sensor) blocks suspend
 
 **Symptom:** Suspend fails and system gets stuck. Logs show:
