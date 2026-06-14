@@ -19,10 +19,10 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
 | **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, Cider, [Claude Code](apps/claude-code.md) |
-| **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, Bluetooth, [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
+| **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, [Bluetooth](peripherals/bluetooth.md) (incl. SMSL AO300PRO amp reconnect), [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, PS4, Chrome flags |
 | **Audio** | [audio/](audio/) — PipeWire, Helvum, Bitwig, Jamulus |
-| **Laptop** | [laptop/](laptop/) — FA607PV: [GPU MUX + suspend](laptop/gpu-mux-suspend.md), [display switching](laptop/display-switching.md), [hybrid /etc/environment](laptop/environment-hybrid.md), ASUS ROG/TUF, prevent apps using amdgpu, S3 sleep |
+| **Laptop** | [laptop/](laptop/) — FA607PV: [NVIDIA Dynamic Boost](laptop/nvidia-dynamic-boost.md), [GPU MUX + suspend](laptop/gpu-mux-suspend.md), [display switching](laptop/display-switching.md), [hybrid /etc/environment](laptop/environment-hybrid.md), ASUS ROG/TUF, prevent apps using amdgpu, S3 sleep |
 | **Recovery** | [recovery/](recovery/) — Clone drive, GRUB reinstall, paste logs |
 | **Issues** | [issues/](issues/) — Known issues, Cursor GPU |
 | **Todo** | [todo.md](todo.md) |
