@@ -29,6 +29,12 @@ Requires Ghostty (or Kitty/WezTerm) + `wl-clipboard`:
 sudo pacman -S wl-clipboard
 ```
 
+Verify it's actually installed (paste fails silently if missing — drag-and-drop still works, which masks the problem):
+
+```bash
+command -v wl-paste || echo "MISSING — install wl-clipboard"
+```
+
 Copy an image to clipboard, then Ctrl+V in Claude Code to paste it.
 
 KGX/GNOME Console does NOT support image paste — it will error with `g-io-error-quark (15): No compatible transfer format found`.
