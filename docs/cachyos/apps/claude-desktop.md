@@ -77,6 +77,8 @@ When a session starts you'll see a real `qemu-system-x86_64` (`-enable-kvm`, `vh
 
 - **Folders are per-conversation; cloud folders may not mount.** A new Cowork chat starts with none of your folders attached — connect the folder (or make a Project) each time. Folders on OneDrive/SharePoint/network drives can refuse to mount into the VM (`cannot be mounted. Request a project or document folder instead`); use a real local folder.
 
+- **GUI death (app *or* GNOME crash) orphans the guest process → `already running` on reopen.** `claude-cowork` is a `systemd --user` service with no `BindsTo`/`PartOf` the graphical session, so it — and its child QEMU VM — survive anything that only kills the GUI: the app crashing, *or a GNOME/Wayland compositor crash that takes the app down with it*. The session's guest process keeps running, so reopening the conversation fails with `guest spawn failed: … process with name "<session-slug>" already running`. Fix: restart the service — `systemctl --user restart claude-cowork` — which tears down the VM + the ghost. Conversation + connected-folder files persist; only the VM runtime is lost, so the next message boots a fresh VM and resumes.
+
 ## Verify the whole stack
 
 ```bash
