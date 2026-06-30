@@ -18,7 +18,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **System** | [system/](system/) — Swappiness, Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), vm.max_map_count |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
-| **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, Cider, [Claude Code](apps/claude-code.md) |
+| **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, Cider, [Claude Code](apps/claude-code.md), [Claude Desktop](apps/claude-desktop.md) |
 | **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, [Bluetooth](peripherals/bluetooth.md) (incl. SMSL AO300PRO amp reconnect), [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, PS4, Chrome flags |
 | **Audio** | [audio/](audio/) — PipeWire, Helvum, Bitwig, Jamulus |
