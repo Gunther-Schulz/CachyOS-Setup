@@ -2,7 +2,7 @@
 
 **Machine:** Laptop (FA607PV) — Radeon iGPU (Raphael, Ryzen 9 7845HX), hybrid with NVIDIA RTX 4060.
 
-**Status:** ✅ **Fix applied 2026-06-30 — GNOME compositing moved off the iGPU onto the NVIDIA dGPU** (Mutter-primary udev rule — see [Fix](#fix--take-the-igpu-out-of-the-compositing-path-composite-on-the-nvidia-dgpu)). Structurally verified at boot (compositor + every Electron GPU process on the dGPU, **zero faults**); the desktop **never crashed before the iGPU started compositing** and the crashes tracked that change, so this is almost certainly the cure — **multi-day heavy use is the final proof.** The bug itself is an **Electron/Chromium GPU-process bug on the gfx11 AMD iGPU** — *not* Brave-specific and *not* our config: Brave first exposed it, then the **Claude Desktop** Electron app tripped the **byte-for-byte identical fault** on 2026-06-30 (`Process claude`, `SQC (data)`, `PERMISSION_FAULTS 0x3`) with Brave not even running. Because *any* Electron app can trigger it, the durable fix takes the **iGPU out of the compositing path** instead of disabling each app's GPU process one at a time. The per-app `--disable-gpu` is now a documented stopgap; the *linux-firmware regression* theory is **falsified on this machine** (see [Ruled out](#ruled-out--linux-firmware-regression-real-upstream-not-this-machines-cause)).
+**Status:** ✅ **Fix applied 2026-06-30 — GNOME compositing moved off the iGPU onto the NVIDIA dGPU** (Mutter-primary udev rule — see [Fix](#fix--take-the-igpu-out-of-the-compositing-path-composite-on-the-nvidia-dgpu)). Structurally verified at boot (compositor + every Electron GPU process on the dGPU, **zero faults**) and now **confirmed in use — ~6 days of heavy Electron load (Brave, Claude Desktop, Discord, Marvel Rivals) since, zero recurrence** (last checked 2026-07-06; compositing still on the dGPU). The desktop **never crashed before the iGPU started compositing** and the crashes tracked that change — this is the cure. The bug itself is an **Electron/Chromium GPU-process bug on the gfx11 AMD iGPU** — *not* Brave-specific and *not* our config: Brave first exposed it, then the **Claude Desktop** Electron app tripped the **byte-for-byte identical fault** on 2026-06-30 (`Process claude`, `SQC (data)`, `PERMISSION_FAULTS 0x3`) with Brave not even running. Because *any* Electron app can trigger it, the durable fix takes the **iGPU out of the compositing path** instead of disabling each app's GPU process one at a time. The per-app `--disable-gpu` is now a documented stopgap; the *linux-firmware regression* theory is **falsified on this machine** (see [Ruled out](#ruled-out--linux-firmware-regression-real-upstream-not-this-machines-cause)).
 
 ## Symptom
 
@@ -78,6 +78,14 @@ for p in $(pgrep -f -- '--type=gpu-process'); do ls -l /proc/$p/fd | grep -o 're
 ```
 
 Confirmed: compositor on `card1` (NVIDIA), Claude Desktop's GPU process moved from `renderD129` (iGPU, where it faulted) to `renderD128` (NVIDIA), zero faults at boot.
+
+**Compositing, not scanout — don't be fooled by the display.** This moves *Mutter's compositing* to the dGPU; the internal panel is still driven by the **iGPU** (scanout), so the desktop *looks* iGPU-driven and the machine stays hybrid (s2idle works). "The display isn't on the dGPU" is **expected** and does **not** mean the fix reverted — verify the live state, not the look:
+
+```sh
+ls -l /proc/$(pgrep -x gnome-shell)/fd | grep -o 'renderD12[89]' | sort -u          # → renderD128 (NVIDIA) = compositing on the dGPU
+udevadm info --name=/dev/dri/card1 | grep -o 'mutter-device-preferred-primary'      # → tag present on the NVIDIA card
+cat /sys/bus/pci/devices/0000:01:00.0/power/runtime_status                          # → active (dGPU kept awake to composite — the idle-battery cost)
+```
 
 **Tradeoff:** the dGPU can't fully runtime-suspend while it composites → higher idle battery. That's the price of killing the whole crash class; accepted here. To undo (back onto the iGPU): `sudo rm /etc/udev/rules.d/61-mutter-primary-gpu.rules && sudo reboot`, and flip `LIBVA_DRIVER_NAME` back to `radeonsi`.
 
