@@ -63,11 +63,11 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descripto
 
 **Force the up-front screen** (with the game **closed** — it rewrites this file on exit): set `IsGlobalPSOCompiled=False` **and** `IsAdditionalPSOCompiled=False` in that file, relaunch → the compile screen runs. (Deleting `Marvel/Saved/Marvel_PCD3D_SM6.upipelinecache` + `CollectedPSOs` + Steam's `steamapps/shadercache/2767030` is a heavier hammer, but the flag is the actual trigger.)
 
-**Automate it** — a launch-time guard flips the flag whenever the driver or Proton version changed since the last launch, so the up-front screen fires exactly when needed and never mid-match. Script: `mr-pso-guard.sh` (in [dotfiles](https://github.com/Gunther-Schulz/dotfiles), symlinked to `~/.local/bin/`); add it to the launch options **before `mangohud`**:
+**Automate it — a pacman hook** (a launch-options wrapper *doesn't* work: it runs inside Steam's runtime, whose `LD_LIBRARY_PATH` breaks host binaries like `pacman`, so its version check comes up empty and can't tell Proton changed — verified). A hook runs in pacman's *own* context on each driver/Proton upgrade and flips the flag there. Deploy [`gaming/mr-pso-recompile.hook`](https://github.com/Gunther-Schulz/dotfiles) to `/etc/pacman.d/hooks/`:
 ```
-SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descriptor_heap /home/g/.local/bin/mr-pso-guard.sh mangohud %command%
+sudo cp ~/dev/Gunther-Schulz/dotfiles/gaming/mr-pso-recompile.hook /etc/pacman.d/hooks/
 ```
-It keys the recompile on `nvidia driver version + proton-cachyos package version` (over-eager only if a Proton release didn't touch vkd3d — rare, and the cost is one spare compile screen). Verify it fires after your next Proton update; if pacman isn't reachable in Steam's launch context, fall back to hashing the vkd3d dll or a pacman hook.
+It triggers on `nvidia-580xx-utils`/`-dkms` and `proton-cachyos-slr` upgrades and runs (as your user, to preserve file ownership) a `sed` that flips `IsGlobalPSOCompiled=True`→`False` in `MachinePSOConfig.ini` → the next launch shows the compile screen. Keep the launch options plain (no wrapper). Adjust the `nvidia-*` targets if you switch driver branch.
 
 **Also enable Steam's own pre-caching** (Settings → Downloads → Shader Pre-Caching → *Enable Shader Pre-Caching* + *Allow background processing of Vulkan shaders*) so Steam rebuilds its Fossilize cache in the background after updates instead of leaving it all to in-match compilation.
 
