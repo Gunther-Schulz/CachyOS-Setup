@@ -57,7 +57,19 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descripto
 
 **Desktop 3–5 s freezes** (RTX 5090) are an open NVIDIA **Blackwell driver bug**, not a config issue — reported across 570/575/590 drivers and every compositor. It lives at the **session + driver** level, so the game's Proton backend doesn't move it: running under XWayland instead of `PROTON_ENABLE_WAYLAND` **did not help**, and `VKD3D_CONFIG=descriptor_heap` only **reduces the frequency — not a cure**. Highest-value mitigation: **toggle VRR/G-SYNC off** (it's a presentation-path bug). Track [NVIDIA open-gpu-kernel-modules #880](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880).
 
-**Shader-compile stutter** on first launches is normal for UE5 and smooths as the DXVK cache warms — don't judge performance on a fresh cache.
+**Shader-compile stutter — and why it recurs after every driver/Proton update.** First-launch stutter is normal UE5 and smooths as the cache warms. But it *comes back* mid-match — often on a first-seen effect like an ult — after any **NVIDIA driver or proton-cachyos update**, because both invalidate the shader cache: on Linux the pipeline is built in two stages (vkd3d-proton does D3D12→SPIR-V, then the NVIDIA driver compiles SPIR-V→GPU code), and a change in *either* stage misses the cache. Familiar shaders then recompile on-demand, in-match. So you must watch **both** the driver and Proton, not just the driver.
+
+**The Linux trap:** Marvel *has* an up-front "compiling shaders, don't start a match yet" screen, gated in `…/Marvel/Saved/Config/Windows/MachinePSOConfig.ini` by `IsGlobalPSOCompiled` + `GPUInternalDriverVersion`. On Windows that version moves with each driver and re-triggers the screen. Under Proton, **vkd3d reports a static `GPUInternalDriverVersion=35.0.99.9999`** that never changes, so the game never notices a driver/Proton change and *skips* the screen — silently recompiling in-match instead. Deleting the shader caches does **not** trigger it either: the screen is gated on that flag, not on cache presence.
+
+**Force the up-front screen** (with the game **closed** — it rewrites this file on exit): set `IsGlobalPSOCompiled=False` **and** `IsAdditionalPSOCompiled=False` in that file, relaunch → the compile screen runs. (Deleting `Marvel/Saved/Marvel_PCD3D_SM6.upipelinecache` + `CollectedPSOs` + Steam's `steamapps/shadercache/2767030` is a heavier hammer, but the flag is the actual trigger.)
+
+**Automate it** — a launch-time guard flips the flag whenever the driver or Proton version changed since the last launch, so the up-front screen fires exactly when needed and never mid-match. Script: `mr-pso-guard.sh` (in [dotfiles](https://github.com/Gunther-Schulz/dotfiles), symlinked to `~/.local/bin/`); add it to the launch options **before `mangohud`**:
+```
+SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descriptor_heap /home/g/.local/bin/mr-pso-guard.sh mangohud %command%
+```
+It keys the recompile on `nvidia driver version + proton-cachyos package version` (over-eager only if a Proton release didn't touch vkd3d — rare, and the cost is one spare compile screen). Verify it fires after your next Proton update; if pacman isn't reachable in Steam's launch context, fall back to hashing the vkd3d dll or a pacman hook.
+
+**Also enable Steam's own pre-caching** (Settings → Downloads → Shader Pre-Caching → *Enable Shader Pre-Caching* + *Allow background processing of Vulkan shaders*) so Steam rebuilds its Fossilize cache in the background after updates instead of leaving it all to in-match compilation.
 
 ## Buying Lattice (premium currency) on Linux
 
