@@ -36,7 +36,7 @@ So "different hardware" is the whole story — specifically the **display wiring
 
 ## What did NOT fix it (ruled out, in order tested)
 
-- **Primary GPU.** Tested forcing NVIDIA as Mutter's primary GPU (udev `mutter-device-preferred-primary` tag); journal confirmed `GPU /dev/dri/card1 selected primary given udev rule`, but **no effect on VRR** — the block is in the driver, not the compositor. The switch is still a useful lever for other reasons (compositor/monitor alignment vs. idle battery) — see the **Optional — which GPU GNOME composites on** section below. Currently **off**: reverted to the AMD iGPU on 2026-06-24.
+- **Primary GPU.** Tested forcing NVIDIA as Mutter's primary GPU (udev `mutter-device-preferred-primary` tag); journal confirmed `GPU /dev/dri/card1 selected primary given udev rule`, but **no effect on VRR** — the block is in the driver, not the compositor. The switch turned out to be a decisive lever for a *different* problem, though: it's currently **on (NVIDIA primary) since 2026-06-30**, re-enabled to fix the [iGPU Electron/Chromium GPU-reset crash](amdgpu-gfx-ring-timeout.md) (compositing on the iGPU was triggering full GPU resets). See the **Optional — which GPU GNOME composites on** section below.
 - **GDM greeter on X11** (a common cause per ArchWiki). Ruled out — greeter runs Wayland (`New session … class 'greeter' … type 'wayland'`).
 - **Non-atomic KMS.** Ruled out — both GPUs added "using atomic mode setting."
 - **Hardware/driver capability.** Ruled out — NVIDIA Wayland VRR needs ≥ Volta + driver ≥ 525; this is Ada + 580.
@@ -51,18 +51,20 @@ The only path is getting NVIDIA to set `vrr_capable=1` (enable "Allow unvalidate
 
 ## Optional — which GPU GNOME composites on (Mutter primary)
 
-**Current state: AMD iGPU (the default). The NVIDIA-primary udev rule was removed 2026-06-24.**
+**Current state: NVIDIA dGPU (since 2026-06-30).** The Mutter-primary udev rule is installed — primarily to fix the [iGPU Electron/Chromium GPU-reset crash](amdgpu-gfx-ring-timeout.md), which only happened while the iGPU composited. (It does *not* unlock VRR; that's a separate driver block.)
 
-In Hybrid mode GNOME/Mutter composites on the **boot-VGA GPU**, which here is the **AMD iGPU** (`card2`, `boot_vga=1`). A single udev tag forces it onto the **NVIDIA dGPU** (`card1`, PCI `0000:01:00.0`) instead. This changes only the *render/compositing* GPU — it does **not** touch supergfxctl mode (stays Hybrid, so suspend still works, unlike the MUX path in [`gpu-mux-suspend.md`](gpu-mux-suspend.md)).
+In Hybrid mode GNOME/Mutter composites on the **boot-VGA GPU** by default, which here is the **AMD iGPU** (`card2`, `boot_vga=1`). A single udev tag forces it onto the **NVIDIA dGPU** (`card1`, PCI `0000:01:00.0`) instead. This changes only the *render/compositing* GPU — it does **not** touch supergfxctl mode (stays Hybrid, so suspend still works, unlike the MUX path in [`gpu-mux-suspend.md`](gpu-mux-suspend.md)).
 
 | Mutter primary | Pro | Con |
 |---|---|---|
-| **AMD iGPU** — default, current | dGPU runtime-suspends → better idle battery | compositor not on the GPU driving the external monitor |
-| **NVIDIA dGPU** | compositor aligned with the external-monitor GPU (`DP-2`) | dGPU held awake → higher idle power |
+| **AMD iGPU** — default | dGPU runtime-suspends → better idle battery | compositor not on the external-monitor GPU; **Electron/Chromium apps crash the iGPU** ([amdgpu-gfx-ring-timeout.md](amdgpu-gfx-ring-timeout.md)) |
+| **NVIDIA dGPU** — **current** | **no iGPU Electron/Chromium GPU-reset crash**; compositor aligned with the external-monitor GPU (`DP-2`) | dGPU held awake → higher idle power |
 
-Neither setting unlocks VRR (the `vrr_capable=0` block is in the NVIDIA driver — see root cause above).
+Neither setting unlocks VRR (the `vrr_capable=0` block is in the NVIDIA driver — see root cause above); the crash fix is the reason to be on NVIDIA primary.
 
-**→ Switch to NVIDIA primary** (create the rule, reboot):
+**Pair the primary GPU with `LIBVA_DRIVER_NAME`** so HW video decode lands on the *same* GPU as the compositor (avoids a cross-GPU frame copy): `nvidia` when on NVIDIA primary, `radeonsi` when on AMD primary. See [environment-hybrid.md](environment-hybrid.md#why-libva_driver_name-follows-the-compositor).
+
+**→ Switch to NVIDIA primary** (create the rule, reboot) — **currently applied**:
 
 ```sh
 printf '%s\n%s\n' \
@@ -72,9 +74,9 @@ printf '%s\n%s\n' \
 sudo reboot
 ```
 
-Confirm: `journalctl -b | grep 'selected primary'` → `card1 selected primary given udev rule`.
+Confirm: `journalctl -b | grep 'selected primary'` → `card1 selected primary given udev rule`. Then set `LIBVA_DRIVER_NAME=nvidia` (see link above).
 
-**← Switch back to AMD primary** (remove the rule, reboot):
+**← Switch back to AMD primary** (remove the rule, reboot) — ⚠️ **re-introduces the [Electron/Chromium iGPU crash](amdgpu-gfx-ring-timeout.md)**; if you do this, also flip `LIBVA_DRIVER_NAME` back to `radeonsi` and re-enable a per-app `--disable-gpu` stopgap:
 
 ```sh
 sudo rm -f /etc/udev/rules.d/61-mutter-primary-gpu.rules

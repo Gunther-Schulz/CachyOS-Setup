@@ -4,14 +4,14 @@
 
 TODO: compare to standard values and possibly remove some.
 
-## Crash in Brave takes GNOME down (Laptop FA607PV)
+## Crash in Brave (and any Electron app) takes GNOME down (Laptop FA607PV)
 
-**Symptom:** Brave's GPU process faults the AMD iGPU and the whole GNOME (Wayland) session drops to GDM with it. First noticed during video, but it also fires with **no video** (e.g. claude.ai chat). Often preceded by ~1–2 s whole-display freezes every ~30 s (the GPU ring soft-recovering) before the fatal reset.
+**Symptom:** a Chromium GPU process faults the AMD iGPU and the whole GNOME (Wayland) session drops to GDM with it. First noticed in Brave during video, but it also fires with **no video** (e.g. claude.ai chat). Often preceded by ~1–2 s whole-display freezes every ~30 s (the GPU ring soft-recovering) before the fatal reset.
 
-**Two layers, two fixes:**
+**It's not a Brave bug** — it's a **Chromium/Electron GPU-process bug on the gfx11 AMD iGPU**, shared by every Chromium-based app. The **Claude Desktop** Electron app tripped the byte-for-byte identical fault on 2026-06-30 with Brave not even running. So the fix is systemic, not per-app.
 
-1. **Cross-GPU decode (older issue).** The iGPU composites the desktop, but Brave's VA-API decoder grabbed the **NVIDIA** node for HW decode; the cross-GPU frame handoff aborted the Mesa compositor. Mitigated by `LIBVA_DRIVER_NAME=radeonsi` in `/etc/environment` (pins decode to the iGPU). Write-up: [laptop/environment-hybrid.md](../laptop/environment-hybrid.md#why-libva_driver_nameradeonsi-brave-hw-video-crash-fix).
+**Fix (applied 2026-06-30): composite on the NVIDIA dGPU, not the iGPU.** A Mutter-primary udev rule moves GNOME compositing onto the dGPU (staying Hybrid, so suspend still works); Chromium then auto-renders on the dGPU and the iGPU never sees the faulting submission — for Brave **and every other Electron app at once**. Brave runs with **full GPU acceleration again** (the old `--disable-gpu` workaround was reverted). Full write-up, verification, the firmware red herring, and the per-app `--disable-gpu` stopgap: **[laptop/amdgpu-gfx-ring-timeout.md](../laptop/amdgpu-gfx-ring-timeout.md)**.
 
-2. **iGPU shader permission fault (the one that kept crashing).** Brave's GPU process triggers an amdgpu **gfxhub UTCL2 "SQC (data)" permission page fault** → gfx ring timeout → full GPU reset → session dies. A known Chromium-on-gfx11 bug class, not our config. Disabling only HW *video* decode (`--disable-features=VaapiVideoDecoder`) proved **insufficient** — it faulted again with VA-API off and no video playing — so the **current fix** is to disable Brave's GPU process entirely in `~/.config/brave-flags.conf` (`--disable-gpu`), which supersedes layer 1. If even that doesn't hold, the last resort is handing GNOME compositing back to the dGPU. Full write-up, verification, the desktop-not-affected reasoning, and the firmware red herring: **[laptop/amdgpu-gfx-ring-timeout.md](../laptop/amdgpu-gfx-ring-timeout.md)**.
+**Older, separate layer — cross-GPU decode.** Before the compositing switch, with the *iGPU* compositing, Brave's VA-API decoder grabbing the NVIDIA node caused a cross-GPU handoff that aborted the Mesa compositor — which is why decode used to be pinned to the iGPU (`LIBVA_DRIVER_NAME=radeonsi`). Now the compositor is the dGPU, so decode is pinned to **`nvidia`** to match — same principle (decode on the compositor's GPU): [laptop/environment-hybrid.md](../laptop/environment-hybrid.md#why-libva_driver_name-follows-the-compositor).
 
-**Laptop-only** — the desktop hides its AMD APU ([hardware/hide-amd-apu.md](../hardware/hide-amd-apu.md)), so Brave runs on the RTX 5090 there and needs neither fix.
+**Laptop-only** — the desktop hides its AMD APU ([hardware/hide-amd-apu.md](../hardware/hide-amd-apu.md)), so Brave runs on the RTX 5090 there and needs none of this.

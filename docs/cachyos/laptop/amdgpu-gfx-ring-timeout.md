@@ -1,26 +1,26 @@
-# Laptop: amdgpu iGPU GPU reset → GNOME/Wayland session dies (Brave-triggered)
+# Laptop: amdgpu iGPU GPU reset → GNOME/Wayland session dies (Electron/Chromium-triggered)
 
 **Machine:** Laptop (FA607PV) — Radeon iGPU (Raphael, Ryzen 9 7845HX), hybrid with NVIDIA RTX 4060.
 
-**Status:** ✅ **Cause identified 2026-06-25 — Brave's GPU process.** Mitigation **escalated 2026-06-28**: disabling only Brave's HW *video* decode (`VaapiVideoDecoder`) was **insufficient** — it faulted again with VA-API confirmed off on the live process, while just sitting in claude.ai chat with **no video playing** — so the fix is now to disable Brave's GPU process entirely (`--disable-gpu`). The earlier *linux-firmware regression* theory is **falsified on this machine** (see [Ruled out](#ruled-out--linux-firmware-regression-real-upstream-not-this-machines-cause)): it crashed again while running the "good" downgraded firmware, with a page fault that names `Process brave`.
+**Status:** ✅ **Fix applied 2026-06-30 — GNOME compositing moved off the iGPU onto the NVIDIA dGPU** (Mutter-primary udev rule — see [Fix](#fix--take-the-igpu-out-of-the-compositing-path-composite-on-the-nvidia-dgpu)). Structurally verified at boot (compositor + every Electron GPU process on the dGPU, **zero faults**); the desktop **never crashed before the iGPU started compositing** and the crashes tracked that change, so this is almost certainly the cure — **multi-day heavy use is the final proof.** The bug itself is an **Electron/Chromium GPU-process bug on the gfx11 AMD iGPU** — *not* Brave-specific and *not* our config: Brave first exposed it, then the **Claude Desktop** Electron app tripped the **byte-for-byte identical fault** on 2026-06-30 (`Process claude`, `SQC (data)`, `PERMISSION_FAULTS 0x3`) with Brave not even running. Because *any* Electron app can trigger it, the durable fix takes the **iGPU out of the compositing path** instead of disabling each app's GPU process one at a time. The per-app `--disable-gpu` is now a documented stopgap; the *linux-firmware regression* theory is **falsified on this machine** (see [Ruled out](#ruled-out--linux-firmware-regression-real-upstream-not-this-machines-cause)).
 
 ## Symptom
 
-Whole GNOME session drops to GDM (looks like the machine "crashed"), but the system stays up — **no reboot**, uptime keeps counting. On Wayland a GPU reset tears down every GL context at once, so `gnome-shell`, `Xwayland`, Brave, Discord, Enpass all abort together and GDM restarts the session ~12 s later.
+Whole GNOME session drops to GDM (looks like the machine "crashed"), but the system stays up — **no reboot**, uptime keeps counting. On Wayland a GPU reset tears down every GL context at once, so `gnome-shell`, `Xwayland`, and every GL client (Brave, Claude Desktop, Discord, Enpass) abort together and GDM restarts the session ~12 s later.
 
 **Precursor (the tell):** for a short while beforehand the whole display — *including the mouse cursor* — freezes for ~1–2 s every ~30 s while background work keeps running (audio, downloads, etc. continue). Those are the gfx ring **soft-recovering** (`ring … reset succeeded` / `device wedged, but no recovery needed`); the session only dies when one reset finally **fails** into a full MODE2 reset. A boot can log many soft-recoveries before a fatal one.
 
-In practice it fires **while using Brave** — first noticed during video, but it also fires with **no video at all** (e.g. just sitting in claude.ai chat). Started the moment the AMD iGPU began compositing the desktop (hybrid mode); **never happened when the NVIDIA dGPU drove everything** — which is the basis for the last-resort fix below.
+It fires **while using any Electron/Chromium app the iGPU is compositing** — first caught in **Brave** (during video, then with no video at all, e.g. just sitting in claude.ai chat), then in the **Claude Desktop** app. Started the moment the AMD iGPU began compositing the desktop (hybrid mode); **never happened when the NVIDIA dGPU drove everything** — which is the basis for the fix below.
 
-## Root cause — Brave (Chromium) GPU process faults the iGPU shader engine
+## Root cause — a Chromium/Electron GPU process faults the iGPU shader engine
 
-A **Chromium GPU-process bug on gfx11 AMD APUs**, not our config. Brave submits a command stream that makes a shader reference a GPU buffer with the wrong permission/lifetime (first pinned on the decoded-video frame, but it also fires with no video — so it's Brave's **general GPU raster/compositing**, not just decode). The iGPU takes a **gfxhub UTCL2 permission page fault**; when the gfx ring can't soft-reset, amdgpu escalates to a **full GPU MODE2 reset** — destroying all GL/Wayland contexts.
+A **Chromium GPU-process bug on gfx11 AMD APUs**, shared by every Chromium-based app (Brave, and Electron apps like Claude Desktop / Discord / VS Code), not our config. The app's GPU process submits a command stream that makes a shader reference a GPU buffer with the wrong permission/lifetime. The iGPU takes a **gfxhub UTCL2 permission page fault**; when the gfx ring can't soft-reset, amdgpu escalates to a **full GPU MODE2 reset** — destroying all GL/Wayland contexts.
 
-Kernel fingerprint (journal) — the page fault **names Brave**; gnome-shell is just the next victim holding the ring:
+Kernel fingerprint (journal) — the page fault **names the originating app** (`brave`, `claude`, …); gnome-shell is just the next victim holding the ring:
 
 ```
 amdgpu …: [gfxhub] page fault (src_id:0 ring:24 vmid:5 pasid:…)
-amdgpu …:  Process brave … thread brave:cs0
+amdgpu …:  Process brave … thread brave:cs0        ← or "Process claude … claude:cs0"
 amdgpu …:   … from client 0x1b (UTCL2)
 amdgpu …:   Faulty UTCL2 client ID: SQC (data) (0xa)     ← shader data access
 amdgpu …:   PERMISSION_FAULTS: 0x3   (MAPPING_ERROR/WALKER_ERROR = 0 → page IS mapped, accessed wrongly)
@@ -29,6 +29,15 @@ amdgpu …: Ring gfx_0.1.0 reset failed
 amdgpu …: GPU reset begin! … MODE2 reset → GPU reset succeeded → device wedged
 ```
 
+**Same fault from two different apps** — the proof it's the app *class*, not Brave:
+
+| Date | `Process` named | Context |
+|---|---|---|
+| 2026-06-28 | `brave` | claude.ai chat, **no video**, VA-API already off on the live process |
+| 2026-06-30 | `claude` (Claude Desktop, Electron 42) | Brave not running at all |
+
+Both fingerprints are identical: `client 0x1b (UTCL2)`, `SQC (data) (0xa)`, `PERMISSION_FAULTS: 0x3`, `MAPPING_ERROR: 0x0`, gfx ring timeout → MODE2 reset.
+
 Mesa side, from `coredumpctl info` on `gnome-shell` — the lost GPU context makes Mesa `abort()` mid buffer-swap, taking the shell (and every GL client) down:
 
 ```
@@ -36,58 +45,93 @@ abort (libc) → libgallium → dri_flush → libEGL_mesa
 → cogl_onscreen_swap_buffers_with_damage (libmutter-cogl) → … (SIGABRT)
 ```
 
-It is a **permission** fault (page mapped, accessed with wrong rights) ⇒ a software bug in *what Brave submits*. There is nothing for the kernel to retry, which is why `amdgpu.noretry` cannot help (that only rescues *not-present* faults).
+It is a **permission** fault (page mapped, accessed with wrong rights) ⇒ a software bug in *what the app submits*. There is nothing for the kernel to retry, which is why `amdgpu.noretry` cannot help (that only rescues *not-present* faults).
 
 **Known, widespread bug class — not unique to this machine:**
 - Brave #48448 — "Brave GPU process triggers amdgpu hard reset on Linux" — same cascade. <https://github.com/brave/brave-browser/issues/48448>
 - cosmic-comp #2149 — identical "gfxhub page fault (UTCL2 permission fault) → GPU reset → full session restart" on a Radeon iGPU. <https://github.com/pop-os/cosmic-comp/issues/2149>
 - microsoft/vscode #238088, and the Framework 16 Phoenix (gfx1103) MES-hang reports — same gfx11-APU page-fault-to-reset from a Chromium/Electron GPU process.
 
-## Fix — take Brave's GPU process off the iGPU (`--disable-gpu`)
+## Fix — take the iGPU out of the compositing path (composite on the NVIDIA dGPU)
 
-Every fault block names `Process brave … thread brave:cs0`, so Brave's GPU process is the **originator** (gnome-shell is just the next victim holding the ring). The reliable fix is to stop Brave submitting **any** GPU work to the iGPU: disable its GPU process. The browser then rasterizes/composites on the CPU — trivial on the 7845HX — so the iGPU never sees the faulting shader submission. The UI stays responsive; the only cost is software WebGL/canvas and a little more CPU/battery while browsing.
+Because *any* Electron/Chromium app can trigger this, the durable fix is **not** to disable each app's GPU process (whack-a-mole — there's no shared flags file across Electron apps; Claude Desktop crashed the session even with Brave's flag in place) but to stop the **iGPU compositing the desktop** at all. The bug never occurred when the NVIDIA dGPU drove everything.
 
-`~/.config/brave-flags.conf` (the Arch `brave-bin` wrapper at `/usr/bin/brave` reads this; `#` and blank lines are ignored, one flag per line):
+Force **Mutter to composite on the NVIDIA dGPU** with the **Mutter-primary udev rule**, which keeps the system in **Hybrid mode so s2idle suspend still works** — unlike the MUX → dGPU-only switch, which *breaks* s2idle ([gpu-mux-suspend.md](gpu-mux-suspend.md)). Once Mutter's primary is the dGPU, **Chromium auto-selects the NVIDIA render node**, so every Electron/Brave app moves off the iGPU at once. Full how-to: [gnome-vrr-external-monitor-hybrid.md → which GPU GNOME composites on (Mutter primary)](gnome-vrr-external-monitor-hybrid.md#optional--which-gpu-gnome-composites-on-mutter-primary).
+
+```sh
+printf '%s\n%s\n' \
+  '# NVIDIA dGPU (0000:01:00.0) as Mutter primary; stay Hybrid so sleep still works' \
+  'SUBSYSTEM=="drm", KERNEL=="card[0-9]", KERNELS=="0000:01:00.0", TAG+="mutter-device-preferred-primary"' \
+  | sudo tee /etc/udev/rules.d/61-mutter-primary-gpu.rules
+sudo reboot
+```
+
+**Pair it with `LIBVA_DRIVER_NAME=nvidia`** so HW video decode follows the compositor onto the dGPU (same GPU, no cross-GPU handoff) — see [environment-hybrid.md](environment-hybrid.md#why-libva_driver_name-follows-the-compositor). With the iGPU now compositing nothing, leaving decode on it (`radeonsi`) would *re-introduce* a cross-GPU frame copy.
+
+**Verify (2026-06-30 — all confirmed on this machine):**
+
+```sh
+journalctl -b | grep 'selected primary'                        # → card1 … selected primary given udev rule  (NVIDIA)
+journalctl -k -b -g 'page fault|ring .*timeout|device wedged'  # → empty
+# every Electron/Chromium GPU process now on the NVIDIA node (renderD128), none on renderD129 (iGPU):
+for p in $(pgrep -f -- '--type=gpu-process'); do ls -l /proc/$p/fd | grep -o 'renderD12[89]'; done | sort -u
+```
+
+Confirmed: compositor on `card1` (NVIDIA), Claude Desktop's GPU process moved from `renderD129` (iGPU, where it faulted) to `renderD128` (NVIDIA), zero faults at boot.
+
+**Tradeoff:** the dGPU can't fully runtime-suspend while it composites → higher idle battery. That's the price of killing the whole crash class; accepted here. To undo (back onto the iGPU): `sudo rm /etc/udev/rules.d/61-mutter-primary-gpu.rules && sudo reboot`, and flip `LIBVA_DRIVER_NAME` back to `radeonsi`.
+
+### Stale-Electron apps (Discord) hang on the dGPU
+
+Moving compositing to the dGPU fixes the crash for every app, but it exposes a **cross-GPU dmabuf** rough edge in apps whose Chromium is too old to follow the compositor:
+
+- **Modern Electron** (Claude Desktop, Electron 42) reads the Wayland compositor's advertised "main device" and renders on the dGPU (`renderD128`) — no problem.
+- **Older Electron** (Discord, Electron 37) keeps rendering on the **iGPU** (`renderD129`); its buffer is then an iGPU dmabuf the now-NVIDIA compositor can't import, so the window **hangs blank**:
+
+```
+wayland_error: failed to import supplied dmabufs: Could not bind the given EGLImage to a CoglTexture2D
+'GPU' process exited with 'abnormal-exit'
+```
+
+(Its GPU telemetry reports `gpu_1` = AMD `active:true`, NVIDIA `active:false`.)
+
+**`/etc/environment` can't fix this.** Chromium picks its render GPU internally by enumerating DRM nodes; it **ignores** `GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `__EGL_VENDOR_LIBRARY_FILENAMES`, and the PRIME-offload vars (those steer *Mesa/GLX* apps, not Chromium's Ozone picker). Tested with the full NVIDIA-forcing set — Discord still rendered on the iGPU and its GPU process abnormal-exited.
+
+**Fix per stale app: disable its GPU acceleration** so it CPU-renders (SHM buffers import fine; no cross-GPU, and no iGPU-crash risk either). For Discord — see [apps/discord.md](../apps/discord.md) — in `~/.config/discord/settings.json` with Discord closed:
+
+```json
+"enableHardwareAcceleration": false
+```
+
+Re-enable if the app later ships a newer Electron that follows the compositor.
+
+### Per-app stopgap (lower battery, but whack-a-mole) — `--disable-gpu`
+
+Before the systemic fix, the workaround was to disable an *individual* app's GPU process so it rasterizes/composites on the CPU (fine on the 7845HX), keeping the iGPU as the desktop compositor for better idle battery. For Brave, in `~/.config/brave-flags.conf` (the Arch `brave-bin` wrapper at `/usr/bin/brave` reads it; `#`/blank lines ignored, one flag per line):
 
 ```
 --disable-gpu
 ```
 
-Fully restart Brave (`pkill -x brave`, then reopen), then verify:
+This **only covers the one app** — Claude Desktop crashed the session even with Brave's flag active, which is exactly why it was abandoned for the dGPU-compositing fix. It's now kept **commented** in `brave-flags.conf` as a fallback for *if* the udev rule is ever reverted (back onto the iGPU). The lighter `--disable-features=VaapiVideoDecoder` (CPU video decode only) proved **insufficient** even for Brave — it faulted with VA-API confirmed off and no video — so it's the general raster/compositing path that faults, not just decode.
 
-```sh
-# brave://gpu → "Graphics Feature Status" reads "Software only" / "Disabled" across the board
-journalctl -k -g 'page fault|ring .*timeout|device wedged' --since "1 hour ago"   # empty = fixed
-```
-
-### Why not the lighter `--disable-features=VaapiVideoDecoder`
-
-That was the first attempt: the theory was that only the *decoded-video* buffer faulted, so forcing CPU video decode would dodge it while keeping GPU raster/WebGL. **It proved insufficient** — on 2026-06-28 the laptop faulted again with VA-API confirmed off on the live process (`Process brave`, `SQC (data)`, `PERMISSION_FAULTS: 0x3`, gfx ring timeout), crashing while just sitting in **claude.ai chat with no video playing**. So the faulting path is Brave's general raster/compositing, not video decode — which is why the whole GPU process has to come off the iGPU. (If an upstream Brave/Mesa fix later lands, step back down to `VaapiVideoDecoder` and retest.)
-
-**Laptop-only — deliberately NOT shared via dotfiles.** The desktop hides its AMD APU ([hardware/hide-amd-apu.md](../hardware/hide-amd-apu.md)), so Brave there runs entirely on the RTX 5090 and is unaffected; pushing this flag to the desktop would needlessly force software rendering. This doc holds the canonical copy of the flag; recreate `~/.config/brave-flags.conf` from it on a fresh laptop install.
-
-This makes the older `LIBVA_DRIVER_NAME=radeonsi` pin ([environment-hybrid.md](environment-hybrid.md)) **moot** for the crash: that kept HW decode on the iGPU to dodge a *cross-GPU* decode crash; with Brave's GPU process disabled there is no GPU decode at all. The env var is harmless — leave it.
-
-### Last resort — hand GNOME compositing back to the NVIDIA dGPU
-
-If `--disable-gpu` somehow doesn't hold (Brave faulting with **no** GPU process would be very surprising), or if killing browser GPU accel proves too costly day-to-day, the decisive fix is to stop the **iGPU from compositing the desktop** at all — the bug never occurred when the NVIDIA dGPU drove everything. Do it with the **Mutter-primary udev rule**, which keeps the system in **Hybrid mode so s2idle suspend still works**: see [gnome-vrr-external-monitor-hybrid.md → which GPU GNOME composites on (Mutter primary)](gnome-vrr-external-monitor-hybrid.md#optional--which-gpu-gnome-composites-on-mutter-primary). Tradeoff: higher idle battery draw (the dGPU can't fully power down while it composites). **Do not** use the MUX → dGPU-only switch for this — that one *breaks* s2idle suspend ([gpu-mux-suspend.md](gpu-mux-suspend.md)).
+**Laptop-only — deliberately NOT shared via dotfiles.** The desktop hides its AMD APU ([hardware/hide-amd-apu.md](../hardware/hide-amd-apu.md)), so Brave there runs entirely on the RTX 5090 and is unaffected. This doc holds the canonical copy of the laptop flags.
 
 ## Ruled out — linux-firmware regression (real upstream, NOT this machine's cause)
 
-The first investigation blamed an AMD **SMU/GC firmware regression** shipped in `linux-firmware` ≥ 20251125 (a real, widely-reported bug) and downgraded `linux-firmware-amdgpu` to `20251111-1`, pinned via `IgnorePkg`. On 2026-06-25 the session **crashed again on that downgraded firmware**, with the Brave page fault above — a signature the firmware hangs *don't* have (those show a clean ring timeout, `MAPPING_ERROR: 0x0`, **no** page fault). So the firmware regression is **not** what crashes this laptop. (The doc had always flagged it "unconfirmed on this machine"; this confirms it negative.)
+The first investigation blamed an AMD **SMU/GC firmware regression** shipped in `linux-firmware` ≥ 20251125 (a real, widely-reported bug) and downgraded `linux-firmware-amdgpu` to `20251111-1`, pinned via `IgnorePkg`. On 2026-06-25 the session **crashed again on that downgraded firmware**, with the app page fault above — a signature the firmware hangs *don't* have (those show a clean ring timeout, `MAPPING_ERROR: 0x0`, **no** page fault). So the firmware regression is **not** what crashes this laptop.
 
-**Undo the downgrade** — the pin blocks firmware updates for no benefit. As of **2026-06-28** the machine is **still pinned** at `linux-firmware-amdgpu 20251111-1` (repos have `1:20260622-1`), and the firmware is now *doubly* proven innocent — it crashed again on this old blob on 2026-06-28 with the Brave page fault, no video. Because a Brave fault (`Process brave` page fault) and a firmware regression (page-fault-free ring timeout) have **distinguishable signatures**, you can unpin **now** without muddying the diagnosis — no need to wait. Edit + update + reboot:
+**Undo the downgrade — ✅ done 2026-06-30.** The pin was removed (sed dropped the `IgnorePkg = linux-firmware-amdgpu` line, `.bak` kept), `linux-firmware-amdgpu` updated to **`1:20260622-1`**, and the machine rebooted so the new blob is actually loaded. Verified: no active `IgnorePkg` line in `/etc/pacman.conf`, `pacman -Q linux-firmware-amdgpu` → `1:20260622-1`.
 
 ```sh
-# headless one-liner to drop the pin (keeps a .bak):
+# (already applied; recorded for a fresh install)
 sudo sed -i.bak -E '/^IgnorePkg[[:space:]]*=[[:space:]]*linux-firmware-amdgpu[[:space:]]*$/d' /etc/pacman.conf
-# or interactively: sudoedit /etc/pacman.conf  → delete the line  IgnorePkg = linux-firmware-amdgpu
 sudo pacman -Syu                   # pulls the current linux-firmware-amdgpu (1:20260622-1+)
 sudo reboot                        # firmware only loads at GPU init
 pacman -Q linux-firmware-amdgpu    # confirm it advanced past 20251111-1
 ```
 
-By mid-2026 the current blob almost certainly carries the upstream revert of the Nov-2025 regression. **Safety net:** if a *page-fault-free* ring timeout (a ring timeout with **no** `Process brave` line) ever appears after updating, that would be the firmware — re-add the `IgnorePkg` line and downgrade again.
+**Safety net:** if a *page-fault-free* ring timeout (a ring timeout with **no** `Process <app>` page-fault line) ever appears, that would be the firmware — re-add the `IgnorePkg` line and downgrade again. Anything with a `Process <app>` page fault (like every crash so far) is the Chromium/iGPU bug, not firmware.
 
 Forensic note worth keeping: a firmware-package downgrade does nothing until you **reboot** — in-session GPU resets reuse the already-resident firmware. (An early "fixed" call was premature because the downgraded blob had never been loaded.) The `smu fw version` journal line is identical before/after the downgrade, so it is **not** a usable signal.
 
@@ -102,7 +146,8 @@ Upstream sources for the firmware regression (real bug, just not ours):
 - ❌ `amdgpu.noretry` — cannot help a *permission* fault (see Root cause).
 - ❌ `amdgpu.ppfeaturemask=…` — other reporters confirm no effect.
 - ❌ **RAM / EXPO** — DDR5-5200 is stock JEDEC; the fault is a GPU-VA permission error, not memory.
-- ❌ **Mesa / kernel version swaps** — crashed on both 7.0.12 and 7.1.1 (same firmware, same Brave path).
+- ❌ **Mesa / kernel version swaps** — crashed on both 7.0.12 and 7.1.1 (same firmware, same app path).
+- ❌ **Per-app `--disable-gpu` as the *primary* fix** — works for one app but not the class; superseded by the dGPU-compositing switch above. (Still valid as a per-app, lower-battery stopgap.)
 
 ## Secondary cleanup
 
