@@ -32,32 +32,30 @@ For better **1% lows**, set the frame limiter method to **early** in MangoJuice 
 
 ## Launch options (Proton)
 
-Both machines run Marvel Rivals (UE5) under **proton-cachyos** — set these in Steam → game **Properties → Launch Options**.
-
-**Laptop (FA607PV):**
+Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set this in Steam → game **Properties → Launch Options**. **One string for both** the laptop (FA607PV) and the desktop (RTX 5090, 2560×1440 @ 330 Hz):
 ```
-SteamDeck=1 PROTON_USE_NTSYNC=1 mangohud %command%
-```
-
-**Desktop (RTX 5090, 2560×1440 @ 330 Hz)** — same, plus `VKD3D_CONFIG=descriptor_heap`:
-```
-SteamDeck=1 PROTON_USE_NTSYNC=1 VKD3D_CONFIG=descriptor_heap mangohud %command%
+SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descriptor_heap mangohud %command%
 ```
 
 | Switch | What it does |
 |---|---|
 | `SteamDeck=1` | **Skips the NetEase launcher** → boots straight into the game (the reason to use it). camelCase — `SteamDeck`, not `Steamdeck`. *Caveat:* can block first-time login — if login fails, remove it for one launch, then re-add. Some games apply Deck graphics defaults when they see this, but **no reports of that for Marvel Rivals** — here it's just the launcher skip. |
-| `PROTON_USE_NTSYNC=1` | Uses the `ntsync` kernel sync primitive (present on CachyOS). |
-| `VKD3D_CONFIG=descriptor_heap` | **Desktop / RTX 5090 only.** Mitigates the Blackwell "presentation freezes 3–5 s" bug — *reduces frequency, not a cure*; experimental; benefits the 595 driver branch. Irrelevant on the laptop (Ada 4060). |
+| `DXVK_NVAPI_VKREFLEX=1` | **Makes NVIDIA Reflex actually function** (NVIDIA-only) — and you must **also turn Reflex on in-game**; the two are required together. Without this, dxvk-nvapi's Vulkan Reflex layer stays *disabled by default* and the game's Reflex calls get **fake-success stubs**: the in-game toggle *looks* active but reduces **zero** latency. The old cachy spelling `PROTON_VKREFLEX=1` was removed — this upstream name is the current one. |
+| `PROTON_ENABLE_WAYLAND=1` | Native Wayland present path — a frametime win **once `descriptor_heap` is set** (see note below). **Both machines** — the desktop Blackwell freeze is unaffected by it either way. **Downside:** breaks the Steam overlay (uninteractable) — disable it for in-game purchases. |
+| `VKD3D_CONFIG=descriptor_heap` | Enables the merged **`VK_EXT_descriptor_heap`** path — lower DX12 descriptor/CPU overhead. **Both machines**, and **not default-on, so you must set it.** Laptop: marginal-but-free perf. Desktop: also cuts the Blackwell "3–5 s freeze" frequency (reduces, doesn't cure). The old `PROTON_VKD3D_HEAP=1` spelling was removed in favour of this — don't use it (inert). |
 | `mangohud` | FPS/frametime overlay + frame limiter (see above). Optionally prefix `gamemoderun` to pin the CPU governor to performance for the session. |
+
+**NTSync is automatic — don't set it.** `ntsync` is default-on in current proton-cachyos and the `PROTON_USE_NTSYNC` flag was removed (dead no-op). `PROTON_NO_NTSYNC=1` disables it only if a title misbehaves.
+
+**Don't add `VKD3D_CONFIG=upload_hvv`.** It puts the D3D12 UPLOAD heap in ReBAR/host-visible VRAM, but vkd3d-proton already handles this by heuristic: **> 8 GB cards get it by default; ≤ 8 GB cards are deliberately excluded** because they hit the VRAM ceiling and stutter. So the **5090 already has it** (no flag needed), and on the **8 GB laptop 4060 forcing it re-introduces the exact VRAM-exhaustion stutter** the heuristic avoids — worse with the GNOME compositor now sharing that 8 GB ([why](../../laptop/amdgpu-gfx-ring-timeout.md)). Forcing it globally also overrides vkd3d's per-game `no_upload_hvv` safety profiles. Leave it to the heuristic.
 
 **DLSS — now native, set it in-game.** Marvel Rivals ships **DLSS 4.5 Super Resolution** natively (DLSS 4.5 rollout, Season 7) — pick it in the game's **Settings → Graphics**; no launch flags. The old workaround flags (`PROTON_DLSS_UPGRADE`, `DXVK_NVAPI_…RENDER_PRESET_SELECTION`, `PROTON_DLSS_INDICATOR`) forced the newer DLL / transformer preset *before* native support landed and are now removed — keeping `PROTON_DLSS_UPGRADE` can even swap the game's current 4.5 DLL for an older Proton-bundled one. To check the active version/preset, use the NVIDIA-app overlay or temporarily re-add `PROTON_DLSS_INDICATOR=1`.
 
 **Frame generation — leave it OFF (competitive).** The same update exposes DLSS Frame Generation, plus **Multi Frame Generation** on the desktop (MFG is Blackwell-only — the 5090 gets it; the laptop's 4060 only single FG). Don't enable it for ranked: FG interpolates a synthetic frame *between* two real ones, so it must hold the newer real frame back to blend — adding input latency even with Reflex forced on. Higher *displayed* FPS doesn't help your aim; the added lag hurts it. FG only pays off in GPU-bound single-player where smoothness outranks latency. (On the desktop you're already display-capped at 330 Hz natively at 1440p, so there's nothing to gain there anyway.)
 
-**`PROTON_ENABLE_WAYLAND` — under evaluation.** Native Wayland is being A/B-tested for frametime impact (verdict open). Toggle trick: break the name (e.g. `_ROTON_ENABLE_WAYLAND=1`) to disable it without deleting the line. Judge it over *several* matches on a warm shader cache — single-match comparisons are dominated by shader-compile stutter and scene variance, not the flag. **Known downside:** with it on, the **Steam overlay becomes uninteractable** — you can't even click in it. Turn it OFF whenever you need the overlay (e.g. in-game purchases — see below).
+**`PROTON_ENABLE_WAYLAND` — on (both machines).** Native Wayland's present path wins **once `descriptor_heap` is set**: with the DX12 CPU-overhead bottleneck relieved, the leaner Wayland present (no XWayland copy) pulls ahead — on the laptop amplified by the GNOME compositor now running on the *same* dGPU as the game ([why](../../laptop/amdgpu-gfx-ring-timeout.md)); on the single-GPU desktop that co-location is a given. The desktop Blackwell freeze is **unaffected** by this flag (XWayland doesn't dodge it), so there's no freeze reason to leave it off. That's why it measures better *with* the heap flag than without. Judge frametime over *several* matches on a warm shader cache — single-match comparisons are dominated by shader-compile stutter and scene variance, not the flag. **Known downside:** with it on, the **Steam overlay becomes uninteractable** — you can't even click in it. Toggle trick: break the name (e.g. `_ROTON_ENABLE_WAYLAND=1`) to disable it without deleting the line — do this whenever you need the overlay (e.g. in-game purchases — see below).
 
-**Desktop 3–5 s freezes** (RTX 5090) are an open NVIDIA **Blackwell driver bug**, not a config issue — reported across 570/575/590 drivers and every compositor. Highest-value mitigation: **toggle VRR/G-SYNC off** (it's a presentation-path bug); `VKD3D_CONFIG=descriptor_heap` reduces frequency. Track [NVIDIA open-gpu-kernel-modules #880](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880).
+**Desktop 3–5 s freezes** (RTX 5090) are an open NVIDIA **Blackwell driver bug**, not a config issue — reported across 570/575/590 drivers and every compositor. It lives at the **session + driver** level, so the game's Proton backend doesn't move it: running under XWayland instead of `PROTON_ENABLE_WAYLAND` **did not help**, and `VKD3D_CONFIG=descriptor_heap` only **reduces the frequency — not a cure**. Highest-value mitigation: **toggle VRR/G-SYNC off** (it's a presentation-path bug). Track [NVIDIA open-gpu-kernel-modules #880](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880).
 
 **Shader-compile stutter** on first launches is normal for UE5 and smooths as the DXVK cache warms — don't judge performance on a fresh cache.
 
