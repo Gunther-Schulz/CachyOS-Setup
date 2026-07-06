@@ -67,7 +67,7 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 VKD3D_CONFIG=descripto
 ```
 sudo cp ~/dev/Gunther-Schulz/dotfiles/gaming/mr-pso-recompile.hook /etc/pacman.d/hooks/
 ```
-It triggers on `nvidia-580xx-utils`/`-dkms` and `proton-cachyos-slr` upgrades and runs (as your user, to preserve file ownership) a `sed` that flips `IsGlobalPSOCompiled=True`→`False` in `MachinePSOConfig.ini` → the next launch shows the compile screen. Keep the launch options plain (no wrapper). Adjust the `nvidia-*` targets if you switch driver branch.
+It triggers on any `nvidia-*utils`/`nvidia-*dkms` and `proton-cachyos*` upgrade — **glob targets**, so a driver-branch change (580→590, or a switch to `nvidia-open`) keeps working instead of silently no-op'ing — and runs (as your user, to preserve file ownership) a `sed` that flips `IsGlobalPSOCompiled=True`→`False` in `MachinePSOConfig.ini` → the next launch shows the compile screen. Keep the launch options plain (no wrapper).
 
 **Also enable Steam's own pre-caching** (Settings → Downloads → Shader Pre-Caching → *Enable Shader Pre-Caching* + *Allow background processing of Vulkan shaders*) so Steam rebuilds its Fossilize cache in the background after updates instead of leaving it all to in-match compilation.
 
