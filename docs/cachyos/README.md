@@ -13,7 +13,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 
 | Topic | Path |
 |-------|------|
-| **NVIDIA** | [nvidia/](nvidia/) — PowerMizer, OpenRGB, RTX 5090 + IOMMU |
+| **NVIDIA** | [nvidia/](nvidia/) — [open kernel modules (switch off closed)](nvidia/open-kernel-modules.md), PowerMizer, OpenRGB, RTX 5090 + IOMMU |
 | **Mouse stutter** | [mouse-stutter.md](peripherals/mouse-stutter.md) — DDC, mutter, Solaar, Bluetooth |
 | **System** | [system/](system/) — Swappiness, Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), vm.max_map_count |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
