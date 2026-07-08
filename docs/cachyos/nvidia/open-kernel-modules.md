@@ -63,5 +63,5 @@ Module options use the same names (`nvidia`, `nvidia-drm`) on open and closed, s
 
 ## Machine status
 
-- **Laptop (FA607PV, RTX 4060 Ada):** was on the **closed** `nvidia-580xx-dkms` — a legacy branch deliberately chosen 2025-12-18 (no `IgnorePkg` pin, just the installed package). Switched to **`nvidia-open-dkms` 610.43.02 (open)** on **2026-07-08**. Because the `580xx` branch was likely a stability choice against a newer-driver regression, if 610 misbehaves, roll back to the `580xx` closed stack per above.
+- **Laptop (FA607PV, RTX 4060 Ada):** was on the **closed** `nvidia-580xx-dkms` — a legacy branch deliberately chosen 2025-12-18 (no `IgnorePkg` pin, just the installed package). Switched to **`nvidia-open-dkms` 610.43.02 (open)** on **2026-07-08** — confirmed on reboot (`modinfo` → `Dual MIT/GPL`, banner "Open Kernel Module", GPU healthy). Because the `580xx` branch was likely a stability choice against a newer-driver regression, if 610 misbehaves, roll back to the `580xx` closed stack per above. **Bonus outcome:** 610 brought a **~20 fps gain** in Marvel Rivals over the frozen 580 branch — a pinned/legacy driver silently costs the accumulated shader-compiler and Vulkan optimizations. No regressions seen.
 - **Desktop (RTX 5090 Blackwell):** open-only by hardware requirement.
