@@ -31,7 +31,15 @@
 ddc-mode-switcher mangohud %command%
 ```
 
-Own tool — repo [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher), AUR package + command `ddc-mode-switcher`. Config: `~/.config/ddc-mode-switcher/config` — set `CONN`, `NATIVE_RES`, `TOGGLE_STEPS` (copy the repo's `config.example`; the i2c bus auto-detects from the connector, so the file is portable across machines). The XG27JCG values: `CONN=DP-2`, `NATIVE_RES=5120x2880`, `TOGGLE_STEPS=("0x03 1" "0x03 20")`. Also runs standalone to toggle 5K↔2K.
+Own tool — [`ddc-mode-switcher`](https://github.com/Gunther-Schulz/ddc-mode-switcher) (AUR package + command). Config: `~/.config/ddc-mode-switcher/config` (copy the repo's `config.example`). Match the monitor **by name** (v2.3.0+) so one config is portable across both machines regardless of which port it's plugged into — connector and i2c bus auto-detect:
+
+```
+MONITOR=XG27JCG
+NATIVE_RES=5120x2880
+TOGGLE_STEPS=("0x03 1" "0x03 20")
+```
+
+Also runs standalone to toggle 5K↔2K.
 
 ---
 
