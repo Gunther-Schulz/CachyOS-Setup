@@ -1,24 +1,12 @@
 # Noise suppression (mic or far-end) — DeepFilterNet3 on PipeWire
 
 Real-time RNN noise suppression, either direction:
-- **Mic** — clean your own voice before it goes out (classic NoiseTorch use).
+- **Mic** — clean your own voice before it goes out.
 - **Far-end** — clean the *other* person's background noise before it hits your speakers (e.g. a noisy Google Meet participant).
 
-## NoiseTorch is dead on PipeWire ≥1.6 — don't use it
+## DeepFilterNet3
 
-**Symptom:** NoiseTorch GUI opens, "load" silently does nothing, no error in the UI.
-
-**Root cause (entirely PipeWire-side):** NoiseTorch extracts its RNNoise plugin to a random `/tmp/librnnoise-*.so` and asks the server to load `module-ladspa-sink` at that **absolute path**. PipeWire (≥1.6) reimplements `module-ladspa-sink` on its `filter-graph` engine, whose LADSPA loader **only searches `LADSPA_PATH`** (`/usr/lib64/ladspa:/usr/lib/ladspa:/usr/lib`) by basename — it ignores absolute `/tmp` paths. Plugin never found → `ENOENT` → silent fail. NoiseTorch (last release 2022) can't be told to do otherwise.
-
-**Diagnosing any "silent load" audio failure** — the app throws stderr away; the real error is server-side:
-```sh
-journalctl --user -b | grep -i noise        # look for: failed to load plugin '/tmp/...' No such file or directory
-noisetorch -i -log                           # NoiseTorch's own debug view
-```
-
-## DeepFilterNet3 — the replacement
-
-RNNoise (what NoiseTorch **and** EasyEffects "Noise Reduction" both use) is a tiny 2017 model. **DeepFilterNet3** is a modern deep-filtering model — far stronger on non-stationary noise (typing, babble) — and its LADSPA plugin installs into `/usr/lib/ladspa/`, so PipeWire resolves it by basename (no `/tmp` problem).
+The older RNNoise model (2017) is weak on non-stationary noise. **DeepFilterNet3** is a modern deep-filtering model — far stronger on typing/babble — and its LADSPA plugin installs into `/usr/lib/ladspa/`, so PipeWire resolves it by basename.
 
 ### Install
 ```sh

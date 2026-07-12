@@ -62,7 +62,7 @@ rm -rf ~/.cache/nvidia                                    # global driver shader
 rm -rf ~/.local/share/Steam/steamapps/shadercache/2767030
 # then set IsGlobalPSOCompiled=False in MachinePSOConfig.ini for a clean up-front recompile
 ```
-After a full wipe + clean recompile on the driver-native path (descriptor_heap out of the launch options), the corruption cleared completely — and the game ran *smoother than before*, since the rebuilt cache also shed months of stale cruft. Honest caveat: the descriptor_heap → Xid 109 → cache-corruption chain fits the timeline and the fix worked, but it wasn't reproduced on purpose to prove causation.
+Honest caveat: the descriptor_heap → Xid 109 → cache-corruption chain fits the timeline and the fix worked, but it wasn't reproduced on purpose to prove causation.
 
 **DLSS — now native, set it in-game.** Marvel Rivals ships **DLSS 4.5 Super Resolution** natively (DLSS 4.5 rollout, Season 7) — pick it in the game's **Settings → Graphics**; no launch flags. The old workaround flags (`PROTON_DLSS_UPGRADE`, `DXVK_NVAPI_…RENDER_PRESET_SELECTION`, `PROTON_DLSS_INDICATOR`) forced the newer DLL / transformer preset *before* native support landed and are now removed — keeping `PROTON_DLSS_UPGRADE` can even swap the game's current 4.5 DLL for an older Proton-bundled one. To check the active version/preset, use the NVIDIA-app overlay or temporarily re-add `PROTON_DLSS_INDICATOR=1`.
 
