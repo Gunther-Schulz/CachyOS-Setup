@@ -150,3 +150,11 @@ Four repo-root files were folded into the tree; two actively-wrong bullets were
 deleted (Brave `radeonsi` fix — now `nvidia`; amdgpu ring-timeout "firmware
 downgrade" — ruled out). `swappiness.md` was merged into `memory-tuning.md` to
 kill a duplicate `vm.swappiness=10` definition. See the path note at the top.
+
+**Audit-driven removals (2026-07-12):** a live laptop audit found the
+memory-tuning doc entirely unapplied (and its systemd-oomd claim wrong —
+earlyoom is the active OOM daemon here, not oomd), `vm.max_map_count` obsolete
+(arch/cachy default 1048576 already exceeds the doc's 262144), and Marvel's
+split-lock a CachyOS default (`/usr/lib/sysctl.d/99-splitlock.conf`). Those docs
+and the split-lock section were removed; the memory / max_map rows in the tables
+above are retained only as historical record.

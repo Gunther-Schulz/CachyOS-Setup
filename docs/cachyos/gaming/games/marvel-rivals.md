@@ -108,12 +108,6 @@ Steam **saves the address**, so this is one-time — future Lattice buys are jus
 
 The desktop 3–5 s freeze is the NVIDIA Blackwell driver bug above. These were investigated and **ruled out** (kept only as noise-reduction settings, not fixes):
 
-**Split lock / bus lock detection (ruled out 2026-03-17).** Disabling it at runtime (`kernel.split_lock_mitigate=0`) did not stop the freeze — bus-lock traps are a *logged symptom*, not the cause. Kept disabled via `/etc/sysctl.d/99-split-lock.conf` only to shed ~4,800 traps/session of UE5/Wine/anti-cheat penalty:
-```
-kernel.split_lock_mitigate=0
-```
-Revert: `sudo sysctl kernel.split_lock_mitigate=1 && sudo rm /etc/sysctl.d/99-split-lock.conf`
-
 **VKD3D shader cache flush (ruled out).** The "Flushing disk cache" correlation ([vkd3d-proton#2793](https://github.com/HansKristian-Work/vkd3d-proton/issues/2793)) was a *consequence* of the stall, not a cause — `VKD3D_SHADER_CACHE_PATH=0` didn't help. Left in launch options but not a mitigation.
 
 **Diagnostics:**

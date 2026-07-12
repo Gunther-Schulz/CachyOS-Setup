@@ -15,7 +15,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 |-------|------|
 | **NVIDIA** | [nvidia/](nvidia/) — [open kernel modules (switch off closed)](nvidia/open-kernel-modules.md), PowerMizer, OpenRGB, RTX 5090 + IOMMU |
 | **Mouse stutter** | [mouse-stutter.md](peripherals/mouse-stutter.md) — DDC, mutter, Solaar, Bluetooth |
-| **System** | [system/](system/) — [memory tuning (swap/zram/oomd)](system/memory-tuning.md), Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), vm.max_map_count, [system-setup inventory](system-setup-inventory.md) |
+| **System** | [system/](system/) — Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), [system-setup inventory](system-setup-inventory.md) |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
 | **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, [Cider](apps/cider.md), [Claude Code](apps/claude-code.md), [Claude Desktop](apps/claude-desktop.md), [Discord](apps/discord.md) |
