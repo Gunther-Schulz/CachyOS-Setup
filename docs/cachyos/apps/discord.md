@@ -21,6 +21,6 @@ wayland_error: failed to import supplied dmabufs: Could not bind the given EGLIm
 
 Or toggle it in **Settings → Advanced → Hardware Acceleration** once the window is reachable. Discord then CPU-renders (SHM buffers the compositor imports fine) — no hang, and no iGPU-crash risk either. Screenshare is unaffected (PipeWire portal + OpenH264, already enabled).
 
-**Env vars can't fix this.** `GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `__EGL_VENDOR_LIBRARY_FILENAMES`, and the PRIME-offload vars **don't** redirect Chromium's GPU pick (they steer Mesa/GLX apps only) — tested. Full reasoning: [amdgpu-gfx-ring-timeout.md → stale-Electron apps](../laptop/amdgpu-gfx-ring-timeout.md#stale-electron-apps-discord-hang-on-the-dgpu).
+**Env vars can't fix this.** `GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `__EGL_VENDOR_LIBRARY_FILENAMES`, and the PRIME-offload vars **don't** redirect Chromium's GPU pick (they steer Mesa/GLX apps only) — tested. Full reasoning: [amdgpu-gfx-ring-timeout.md → old-Electron apps](../laptop/amdgpu-gfx-ring-timeout.md#consequence-old-electron-apps-discord-hang-on-the-dgpu).
 
 **Laptop-only** — the desktop hides its AMD APU, so Discord runs entirely on the RTX 5090 and needs no change.
