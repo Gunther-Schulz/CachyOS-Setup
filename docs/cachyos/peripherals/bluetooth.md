@@ -24,22 +24,7 @@ pactl set-default-sink bluez_output.7C_FE_62_FB_80_AA.1
 ```
 If it still won't lock on, the link key is stale → `bluetoothctl remove 7C:FE:62:FB:80:AA`, put amp in pairing mode (fast blink), then `scan on` / `pair` / `trust` / `connect`.
 
-**Permanent fix (installed):** user service bounces the connection ~6 s after WirePlumber is ready, so the sink always builds.
-
-`~/.config/systemd/user/bt-amp-reconnect.service`:
-```ini
-[Unit]
-Description=Reconnect SMSL amp after audio is ready
-After=wireplumber.service graphical-session.target
-Wants=wireplumber.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/bash -c 'sleep 6; bluetoothctl disconnect 7C:FE:62:FB:80:AA; sleep 2; bluetoothctl connect 7C:FE:62:FB:80:AA'
-
-[Install]
-WantedBy=default.target
-```
+**Permanent fix (installed):** a user service bounces the connection ~6 s after WirePlumber is ready, so the sink always builds. The unit is **tracked in dotfiles** (`laptop/bt-amp-reconnect.service`, deployed by `install.sh` on the laptop) — enable it:
 ```bash
 systemctl --user enable bt-amp-reconnect.service
 ```

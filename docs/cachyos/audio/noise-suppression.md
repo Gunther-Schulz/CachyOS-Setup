@@ -15,37 +15,7 @@ paru -S libdeep_filter_ladspa-bin
 Prebuilt (no Rust compile). Provides `/usr/lib/ladspa/libdeep_filter_ladspa.so`, DFN3 low-latency model **embedded** (no external model file). Labels: `deep_filter_mono`, `deep_filter_stereo`.
 
 ### Virtual sink (far-end / per-stream)
-Creates a filtered sink; route only chosen streams through it. User drop-in, no sudo —
-`~/.config/pipewire/pipewire.conf.d/99-deepfilter-sink.conf`:
-
-```
-context.modules = [
-    {   name = libpipewire-module-filter-chain
-        flags = [ nofail ]
-        args = {
-            node.description = "DeepFilter Noise Suppression"
-            media.name       = "DeepFilter Noise Suppression"
-            filter.graph = {
-                nodes = [
-                    {   type    = ladspa
-                        name    = deepfilter
-                        plugin  = libdeep_filter_ladspa
-                        label   = deep_filter_stereo
-                        control = {
-                            "Attenuation Limit (dB)" = 100
-                            "Post Filter Beta"       = 0.05
-                        }
-                    }
-                ]
-            }
-            audio.channels = 2
-            audio.position = [ FL FR ]
-            capture.props  = { node.name = "effect_input.deepfilter"  media.class = Audio/Sink }
-            playback.props = { node.name = "effect_output.deepfilter" node.passive = true }
-        }
-    }
-]
-```
+Creates a filtered sink; route only chosen streams through it. The config is a user drop-in at `~/.config/pipewire/pipewire.conf.d/99-deepfilter-sink.conf` — **tracked in dotfiles** (`pipewire/99-deepfilter-sink.conf`, deployed by `install.sh`). It defines a `libpipewire-module-filter-chain` sink named **"DeepFilter Noise Suppression"** (the `deep_filter_stereo` LADSPA plugin; input node `effect_input.deepfilter`). Tune it via the control table below.
 Apply + verify:
 ```sh
 systemctl --user restart pipewire
