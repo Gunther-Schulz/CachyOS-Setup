@@ -9,6 +9,8 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 
 **Convention:** machine-specific docs carry a `**Machine:**` tag at the top (Desktop / Laptop / Both); untagged docs apply to both. Everything in [`laptop/`](laptop/) is the laptop; [`fan-control/`](../../fan-control/) is the desktop.
 
+**Doc style:** clean-state — current *applied* config + why, not a history of everything tried. Full guidelines: [`CLAUDE.md`](../../CLAUDE.md).
+
 ## Index
 
 | Topic | Path |
