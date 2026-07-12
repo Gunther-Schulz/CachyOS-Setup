@@ -103,20 +103,3 @@ Lattice is the paid currency (skins / Battle Pass; converts 1:1 to Units). It's 
 Steam **saves the address**, so this is one-time — future Lattice buys are just *Wallet → confirm*, mouse only.
 
 **Don't have `PROTON_ENABLE_WAYLAND` enabled for purchases** — native Wayland makes the overlay completely uninteractable (can't even click), which is worse than the keyboard bug. Disable it (break the name as above) before buying.
-
-## Multi-second freeze — ruled-out causes & diagnostics
-
-The desktop 3–5 s freeze is the NVIDIA Blackwell driver bug above. These were investigated and **ruled out** (kept only as noise-reduction settings, not fixes):
-
-**VKD3D shader cache flush (ruled out).** The "Flushing disk cache" correlation ([vkd3d-proton#2793](https://github.com/HansKristian-Work/vkd3d-proton/issues/2793)) was a *consequence* of the stall, not a cause — `VKD3D_SHADER_CACHE_PATH=0` didn't help. Left in launch options but not a mitigation.
-
-**Diagnostics:**
-```bash
-# split/bus-lock event count this boot:
-journalctl -b -k --no-pager | grep "bus_lock\|split lock" | grep -v "warning on user-space" | wc -l
-# bus-lock events in a time window:
-journalctl -b -k --since "HH:MM:00" --until "HH:MM:00" --no-pager | grep "bus_lock"
-# find freezes in a MangoHud CSV (frametime > 500 ms); log at ~/Marvel-Win64-Shipping_*.csv:
-awk -F',' 'NR>3 && $2 > 500 {print NR": fps="$1" frametime="$2"ms"}' ~/Marvel-Win64-Shipping_*.csv
-# VKD3D log via `2>/home/g/vkd3d.log` in launch options; check "Flushing disk cache" near a freeze
-```

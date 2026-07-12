@@ -4,12 +4,6 @@
 
 **Register copied VM:** `VBoxManage registervm "$HOME/VirtualBox VMs/Win11/Win11.vbox"`. Update shared folder host path if username differs.
 
-**Blacklist KVM (required on some kernels):**
-```bash
-echo "blacklist kvm" | sudo tee /etc/modprobe.d/kvm.conf
-echo "blacklist kvm_amd" | sudo tee /etc/modprobe.d/kvm_amd.conf
-```
-
 **Windows 11 OOBE:** Disable networking in VM. At "Let's connect you to a network", Shift+F10 → `OOBE\BYPASSNRO` → restart → "I don't have Internet" → limited setup.
 
 **Config:** Enable VT-x/AMD-V, PAE/NX. For AutoCAD: disable 3D acceleration in VM.

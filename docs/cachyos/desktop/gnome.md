@@ -2,11 +2,6 @@
 
 **Performance patches:** `yay -S gnome-shell-performance` (or mutter-performance as referenced in source).
 
-**Fix crashes/glitches (GPU acceleration):** Add to `/etc/environment`:
-```bash
-export GSK_RENDERER=cairo
-```
-
 **Fractional scaling and G-Sync:** Both can be enabled together (GNOME 49+):
 ```bash
 gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer', 'variable-refresh-rate']"
