@@ -1,6 +1,8 @@
-# GRUB Custom / Safety Entries
+# GRUB Custom / Safety Boot Entries
 
-Add custom menu entries in `/etc/grub.d/40_custom`. Use a helper to resolve root device:
+**Machine:** Laptop (GRUB) — desktop boots Limine, see [grub-default-kernel.md](grub-default-kernel.md).
+
+Add one-off recovery entries (e.g. a `nomodeset` safe-mode boot) to `/etc/grub.d/40_custom` — GRUB reads it verbatim and appends it to the generated menu. Resolve the root device the same way `10_linux` does, so the entry survives UUID changes:
 
 ```bash
 get_root_device() {
@@ -17,6 +19,6 @@ get_root_device() {
 }
 ```
 
-Example: Safe mode (nomodeset, nvidia and nouveau blacklisted). Adjust kernel/initrd names and UUID as needed. Then run `sudo update-grub` (or `sudo grub-mkconfig -o /boot/grub/grub.cfg`).
+After adding an entry: `sudo grub-mkconfig -o /boot/grub/grub.cfg` (or `sudo update-grub`).
 
-**Note:** Prefer systemd boot manager or Limine for new installs.
+**Status:** not currently applied — `/etc/grub.d/40_custom` is stock (verified). Kept as a break-glass reference.
