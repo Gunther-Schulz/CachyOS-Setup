@@ -1,31 +1,9 @@
 # NVIDIA PowerMizer — Choppy Mouse at Low/Transitioning GPU Load
 
-**Machine:** Desktop. ⚠️ Unverified — did nothing when last tested; TODO: check if still active and try disabling.
+**Machine:** Desktop.
 
-**Symptoms:** Mouse (and sometimes display) choppy when GPU is at low or changing load; smooth at full idle or high load.
+**Symptom:** Mouse (and sometimes display) choppy when the GPU is at low or changing load; smooth at full idle or high load. **Cause:** PowerMizer P-state transitions can stall the Wayland compositor.
 
-**Cause:** PowerMizer switches P-states; transitions can stall the Wayland compositor.
+**Keep PowerMizer at default — do not set anything custom.** Forcing max performance (`GpuPowerMizerMode=1` via a login autostart) was tried and **did nothing** when tested — likely a no-op on Wayland + the RTX 5090.
 
-**Fix:** Prefer maximum performance (slightly higher idle power).
-
-**One-time test:**
-```bash
-nvidia-settings -a "[gpu:0]/GpuPowerMizerMode=1"
-```
-
-**Permanent (autostart):**
-```bash
-mkdir -p ~/.config/autostart
-cat << 'EOF' > ~/.config/autostart/nvidia-powermizer-maxperf.desktop
-[Desktop Entry]
-Type=Application
-Name=NVIDIA PowerMizer maximum performance
-Exec=sh -c "nvidia-settings -a [gpu:0]/GpuPowerMizerMode=1"
-Hidden=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-EOF
-```
-Log out and back in. Use `[gpu:0]` literally in `Exec`.
-
-**Verify:** `nvidia-settings -q [gpu:0]/GpuPowerMizerMode` → `1`.
+**TODO (desktop):** confirm the old `~/.config/autostart/nvidia-powermizer-maxperf.desktop` is removed and PowerMizer reads default — `nvidia-settings -q [gpu:0]/GpuPowerMizerMode`.
