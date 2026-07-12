@@ -9,7 +9,7 @@ sudo pacman -S lutris wine lib32-freetype2 freetype2 lib32-gnutls
 **AUR (yay):**
 ```bash
 yay -S brave-bin miniconda3 gitkraken svn ttf-ms-fonts ttf-mac-fonts adobe-base-14-fonts numix-gtk-theme
-yay -S galaxybudsclient-bin logiops rclone-bisync-manager-git heroic-games-launcher-bin
-yay -S display-mode-switcher usb-link-speed-tray-git   # own tools: XG27JCG mode toggle, USB link-speed tray
+yay -S galaxybudsclient-bin logiops heroic-games-launcher-bin
+yay -S display-mode-switcher usb-link-speed-tray-git rclone-bisync-manager-git   # own tools (AUR): XG27JCG mode toggle, USB link-speed tray, rclone bisync
 yay -S asusctl rog-control-center   # laptop only
 ```

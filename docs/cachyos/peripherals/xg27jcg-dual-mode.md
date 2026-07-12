@@ -25,9 +25,13 @@
 
 ## Usage
 
-**Toggle:** [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher) — own tool, install from AUR.
+**Primary use — Steam per-game launch wrapper.** For games you want to run at 1440p high-refresh (the 2K/330Hz mode), add [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher) (own tool, install from AUR) to the game's **Launch Options** so it switches the monitor into 2K/330Hz for that game:
 
-**Steam:** `display-mode-switcher mangohud %command%`
+```
+display-mode-switcher mangohud %command%
+```
+
+It also works standalone to toggle 5K↔2K outside Steam.
 
 ---
 
