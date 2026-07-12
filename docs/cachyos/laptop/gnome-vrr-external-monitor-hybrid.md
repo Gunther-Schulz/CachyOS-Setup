@@ -1,16 +1,16 @@
 # Laptop: GNOME VRR on the external monitor (hybrid GPU)
 
-**Machine:** FA607PV — AMD Raphael iGPU (Ryzen 9 7845HX) + NVIDIA RTX 4060 Mobile, hybrid mode (`supergfxctl` = Hybrid).
+**Machine:** FA607PV — AMD Raphael iGPU (Ryzen 9 7845HX) + NVIDIA RTX 4060 Mobile, hybrid mode.
 
-**Status:** ❌ **VRR is not available on the external monitor under GNOME Wayland (2026-06-23).** Root cause: the **NVIDIA driver reports the monitor as `vrr_capable=0`** — a driver-level decision with no override path on Wayland. *Not* a Mutter / primary-GPU / compositor-config issue (all ruled out below). At 330 Hz a divisor cap is the practical substitute.
+**Status:** ❌ VRR is not available on the external monitor under GNOME Wayland. Root cause: the **NVIDIA driver reports the monitor as `vrr_capable=0`** — a driver-level decision with no override path on Wayland. At 330 Hz a divisor-based fps cap is the practical substitute (below).
 
 ## Symptom
 
-External monitor — **ASUS XG27JCG**, 2560×1440, Adaptive-Sync **48–330 Hz**, on the **NVIDIA dGPU** (`DP-2`) — has **no VRR toggle** in GNOME Settings → Displays. The internal AMD-driven panel does show one. The **same monitor on the (single-GPU, RTX 5090) desktop** — otherwise identical stack: CachyOS + GNOME 50 + Wayland + NVIDIA 580 — gets VRR fine.
+External monitor — **ASUS XG27JCG**, 2560×1440, Adaptive-Sync **48–330 Hz**, on the **NVIDIA dGPU** (`DP-2`) — has **no VRR toggle** in GNOME Settings → Displays. The internal AMD-driven panel does show one. The **same monitor on the (single-GPU, RTX 5090) desktop** — otherwise identical stack (CachyOS + GNOME + Wayland + NVIDIA 580) — gets VRR fine.
 
 ## Root cause — NVIDIA reports the monitor `vrr_capable=0`
 
-GNOME/Mutter shows the VRR toggle only for outputs whose DRM connector advertises `vrr_capable=1`. Dumping the live connector properties shows the NVIDIA driver flags the external monitor **not** capable, while amdgpu flags the internal panel capable:
+GNOME/Mutter shows the VRR toggle only for outputs whose DRM connector advertises `vrr_capable=1`:
 
 | Connector | Driver | `vrr_capable` |
 |---|---|---|
@@ -22,76 +22,19 @@ modetest -M nvidia-drm -c | grep -A3 vrr_capable   # value: 0  on the connected 
 modetest -M amdgpu    -c | grep -A3 vrr_capable   # value: 1  on the connected eDP-2
 ```
 
-The block is **in the NVIDIA driver, below the compositor.** NVIDIA sets `vrr_capable=1` only for a display it has **auto-validated as "G-SYNC Compatible"** over that specific link, or where the user has manually ticked *"Allow G-SYNC on a monitor not validated as G-SYNC Compatible."* This monitor isn't getting that flag on the laptop. amdgpu instead flags any EDID-advertised FreeSync panel capable — hence the internal toggle.
+NVIDIA only sets `vrr_capable=1` for a display it has auto-validated as "G-SYNC Compatible" over that link, or where the user manually ticks "Allow G-SYNC on a monitor not validated as G-SYNC Compatible" — a toggle that only exists in **`nvidia-settings`, which is X11-only**; this laptop is Wayland-only, so there's no supported way to flip it. The desktop gets VRR because that monitor sits on a native DisplayPort straight off the GPU; on the laptop the external display reaches the NVIDIA GPU over **USB-C DisplayPort-alt-mode** (this chassis has no full-size DP) — exactly the kind of link NVIDIA's auto-validation tends to reject. So it's the display wiring, not the weaker GPU. ([NVIDIA forum thread](https://forums.developer.nvidia.com/t/g-sync-compatible-monitor-not-detected-as-vrr-capable-24g2w1g4/237332))
 
-### Why it works on the desktop but not the laptop (same monitor)
-
-`vrr_capable` is decided per **display + connection + GPU**, not per monitor model:
-
-- **Desktop:** monitor on a **native DisplayPort** straight off the GPU → NVIDIA auto-validates G-SYNC Compatible → `vrr_capable=1`.
-- **Laptop:** the external display reaches the NVIDIA GPU as connector `DP-2`, carried over the **USB-C port (DisplayPort-alt-mode)** — this chassis has no full-size DisplayPort and the HDMI port (`HDMI-A-1`) is unused. The DP-over-USB-C link (through the Type-C controller/retimer) is exactly where NVIDIA's auto-validation tends to come back negative → `vrr_capable=0`.
-- The manual override that would force it is **`nvidia-settings`, which is X11-only**; this laptop is **Wayland-only with no X11 session installed**, so there is no supported way to flip it.
-
-So "different hardware" is the whole story — specifically the **display wiring** (native DP vs USB-C DP-alt), not the weaker GPU.
-
-## What did NOT fix it (ruled out, in order tested)
-
-- **Primary GPU.** Tested forcing NVIDIA as Mutter's primary GPU (udev `mutter-device-preferred-primary` tag); journal confirmed `GPU /dev/dri/card1 selected primary given udev rule`, but **no effect on VRR** — the block is in the driver, not the compositor. The switch turned out to be a decisive lever for a *different* problem, though: it's currently **on (NVIDIA primary) since 2026-06-30**, re-enabled to fix the [iGPU Electron/Chromium GPU-reset crash](amdgpu-gfx-ring-timeout.md) (compositing on the iGPU was triggering full GPU resets). See the **Optional — which GPU GNOME composites on** section below.
-- **GDM greeter on X11** (a common cause per ArchWiki). Ruled out — greeter runs Wayland (`New session … class 'greeter' … type 'wayland'`).
-- **Non-atomic KMS.** Ruled out — both GPUs added "using atomic mode setting."
-- **Hardware/driver capability.** Ruled out — NVIDIA Wayland VRR needs ≥ Volta + driver ≥ 525; this is Ada + 580.
+Ruled out (don't re-investigate): Mutter primary GPU (no effect — see below), GDM-on-X11 (greeter runs Wayland here), non-atomic KMS (both GPUs use atomic), and driver/hardware capability (Ada + 580 clears NVIDIA's Wayland-VRR floor).
 
 ## Practical substitute — divisor cap at 330 Hz
 
 VRR is low-value at 330 Hz anyway (~3 ms refresh granularity), so a fixed cap that cleanly divides the refresh gives flat frametimes without it: **110** (330/3) or **165** (330/2), set in MangoHud (`fps_limit`). See the Marvel Rivals / MangoHud notes.
 
-## If you ever do want it enabled
+## Mutter primary GPU
 
-The only path is getting NVIDIA to set `vrr_capable=1` (enable "Allow unvalidated G-SYNC Compatible"). Currently that means one of: an X11 session with `nvidia-settings` (none installed), trying a different physical link (HDMI port, or a different USB-C→DP cable / dock that validates), or a future driver that auto-validates this monitor over USB-C. Not worth it for the 330 Hz gain.
-
-## Optional — which GPU GNOME composites on (Mutter primary)
-
-**Current state: NVIDIA dGPU (since 2026-06-30).** The Mutter-primary udev rule is installed — primarily to fix the [iGPU Electron/Chromium GPU-reset crash](amdgpu-gfx-ring-timeout.md), which only happened while the iGPU composited. (It does *not* unlock VRR; that's a separate driver block.)
-
-In Hybrid mode GNOME/Mutter composites on the **boot-VGA GPU** by default, which here is the **AMD iGPU** (`card2`, `boot_vga=1`). A single udev tag forces it onto the **NVIDIA dGPU** (`card1`, PCI `0000:01:00.0`) instead. This changes only the *render/compositing* GPU — it does **not** touch supergfxctl mode (stays Hybrid, so suspend still works, unlike the MUX path in [`gpu-mux-suspend.md`](gpu-mux-suspend.md)).
-
-| Mutter primary | Pro | Con |
-|---|---|---|
-| **AMD iGPU** — default | dGPU runtime-suspends → better idle battery | compositor not on the external-monitor GPU; **Electron/Chromium apps crash the iGPU** ([amdgpu-gfx-ring-timeout.md](amdgpu-gfx-ring-timeout.md)) |
-| **NVIDIA dGPU** — **current** | **no iGPU Electron/Chromium GPU-reset crash**; compositor aligned with the external-monitor GPU (`DP-2`) | dGPU held awake → higher idle power |
-
-Neither setting unlocks VRR (the `vrr_capable=0` block is in the NVIDIA driver — see root cause above); the crash fix is the reason to be on NVIDIA primary.
-
-**Pair the primary GPU with `LIBVA_DRIVER_NAME`** so HW video decode lands on the *same* GPU as the compositor (avoids a cross-GPU frame copy): `nvidia` when on NVIDIA primary, `radeonsi` when on AMD primary. See [environment-hybrid.md](environment-hybrid.md#why-libva_driver_name-follows-the-compositor).
-
-**→ Switch to NVIDIA primary** (create the rule, reboot) — **currently applied**:
-
-```sh
-printf '%s\n%s\n' \
-  '# NVIDIA dGPU (0000:01:00.0) as Mutter primary; stay Hybrid so sleep still works' \
-  'SUBSYSTEM=="drm", KERNEL=="card[0-9]", KERNELS=="0000:01:00.0", TAG+="mutter-device-preferred-primary"' \
-  | sudo tee /etc/udev/rules.d/61-mutter-primary-gpu.rules
-sudo reboot
-```
-
-Confirm: `journalctl -b | grep 'selected primary'` → `card1 selected primary given udev rule`. Then set `LIBVA_DRIVER_NAME=nvidia` (see link above).
-
-**← Switch back to AMD primary** (remove the rule, reboot) — ⚠️ **re-introduces the [Electron/Chromium iGPU crash](amdgpu-gfx-ring-timeout.md)**; if you do this, also flip `LIBVA_DRIVER_NAME` back to `radeonsi` and re-enable a per-app `--disable-gpu` stopgap:
-
-```sh
-sudo rm -f /etc/udev/rules.d/61-mutter-primary-gpu.rules
-sudo reboot
-```
-
-Confirm: that journal line is gone — Mutter falls back to the `boot_vga=1` amdgpu card.
+Mutter composites on the **NVIDIA dGPU**, not the default AMD iGPU — a udev rule applied for an unrelated reason (it fixes an Electron/Chromium GPU-reset crash that only happened while the iGPU composited). It has **no effect on VRR** (confirmed above: the block is in the NVIDIA driver, not the compositor). See [amdgpu-gfx-ring-timeout.md](amdgpu-gfx-ring-timeout.md) for the rule, why it's applied, and how to switch back.
 
 ## Related
 
-- [`gpu-mux-suspend.md`](gpu-mux-suspend.md) — why dGPU-only mode (which *would* make NVIDIA the sole GPU and might change validation) is off the table: it breaks s2idle.
-- [`amdgpu-gfx-ring-timeout.md`](amdgpu-gfx-ring-timeout.md) — the iGPU crash; unrelated to VRR, same hybrid context.
-
-## Sources
-
-- ArchWiki — Variable refresh rate: <https://wiki.archlinux.org/title/Variable_refresh_rate>
-- NVIDIA forum — "monitor not detected as vrr capable" / allow unvalidated G-SYNC Compatible: <https://forums.developer.nvidia.com/t/g-sync-compatible-monitor-not-detected-as-vrr-capable-24g2w1g4/237332>
-- NVIDIA forum — G-Sync/FreeSync under Wayland: <https://forums.developer.nvidia.com/t/feature-g-sync-freesync-under-wayland-session/220822>
+- [`gpu-mux-suspend.md`](gpu-mux-suspend.md) — dGPU-only mode (which would make NVIDIA the sole GPU) is off the table: it breaks s2idle suspend.
+- [`amdgpu-gfx-ring-timeout.md`](amdgpu-gfx-ring-timeout.md) — the Mutter-primary-GPU udev rule, applied for the iGPU crash, not for VRR.

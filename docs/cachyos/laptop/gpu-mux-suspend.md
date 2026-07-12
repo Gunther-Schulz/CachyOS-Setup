@@ -1,5 +1,7 @@
 # GPU MUX + Suspend (FA607PV laptop)
 
+**Machine:** Laptop (FA607PV).
+
 The ASUS TUF A16 (FA607PV: Ryzen 9 7845HX + RTX 4060 + AMD Raphael iGPU) only supports **s2idle** (no S3 — see [s3-sleep.md](s3-sleep.md)). Suspend **hangs on the way into sleep** (freezes at `PM: suspend entry`, never resumes, needs a hard power-off) whenever the GPU MUX is in **dGPU/Ultimate mode** — the panel is hardwired to the NVIDIA card, which then can't power down for s2idle.
 
 **Fix: run the GPU in Hybrid mode** (panel on the AMD iGPU, NVIDIA on-demand and able to suspend).
@@ -44,7 +46,7 @@ Complements the already-present `NVreg_PreserveVideoMemoryAllocations=1`. It get
 
 ## Intermittent failure: gnome-shell NVKMS mmap wedges the userspace freeze
 
-**Distinct from the MUX hang at the top of this doc.** Even in correct Hybrid mode, suspend can *occasionally* abort — not at `PM: suspend entry` (device suspend), but one stage later, in the **userspace freeze**. Signature in `journalctl -b -1 -k`:
+**Distinct from the MUX hang at the top of this doc.** Even in correct Hybrid mode, suspend can *occasionally* abort one stage later, in the **userspace freeze** rather than at `PM: suspend entry`. Signature in `journalctl -b -1 -k`:
 
 ```
 PM: suspend entry (s2idle)
@@ -54,13 +56,11 @@ Freezing user space processes failed after 20.0 seconds (N tasks refusing to fre
 PM: suspend exit
 ```
 
-**Mechanism:** `nvidia-suspend.service` quiesces the GPU / saves VRAM first. Because NVIDIA's drop-in `/usr/lib/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf` sets `SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false`, GNOME is left running — so gnome-shell can still issue an NVKMS buffer `mmap()` *into the half-suspended driver*. That mmap wedges inside the NVIDIA RM while holding the process `mmap_lock`; a sibling gnome-shell thread then blocks (`state:D`, unkillable) on a page fault waiting for the same lock. Neither task can be frozen → 20 s timeout → suspend aborts, the desktop hangs, and a hard power-off is needed. The journal of that boot ends abruptly at the freeze failure (no thaw / no shutdown).
+**Cause:** NVIDIA's drop-in `/usr/lib/systemd/system/systemd-suspend.service.d/10-nvidia-no-freeze-session.conf` sets `SYSTEMD_SLEEP_FREEZE_USER_SESSIONS=false` so GNOME keeps running while `nvidia-suspend.service` quiesces the GPU — and gnome-shell can still issue an NVKMS `mmap()` into the half-suspended driver, wedging inside NVIDIA RM while holding the process `mmap_lock`; a sibling gnome-shell thread then blocks unkillable on the same lock, neither task freezes, and suspend aborts after the 20 s timeout (hard power-off needed). It's an upstream NVIDIA driver race, not a misconfiguration — rare, triggered by a live NVIDIA GPU surface at the instant of suspend.
 
-**It's an upstream NVIDIA driver race, not a misconfiguration** — the config above is already correct, and it's rare (a live NVIDIA GPU surface at the instant of suspend is the trigger; an otherwise-fine suspend a few hours earlier is normal). Mitigations, in order:
+Mitigations:
+- `NVreg_EnableS0ixPowerManagement=1` (above) tightens the half-suspended window.
+- Keep the NVIDIA driver updated (580.x branch) — these races get fixed upstream.
+- **Do *not* override the no-freeze-session drop-in** to re-enable session freezing — it trades this rare race for a different, *reliable* NVIDIA deadlock that the drop-in exists to avoid.
 
-- **Keep hardware video decode off the dGPU.** A hardware-decoded video on the NVIDIA card at suspend time is the most likely trigger (`threaded-ml` is consistent with a media loop). Pin VA-API to the iGPU — see [Brave HW-video fix](../apps/brave.md). The fewer live NVIDIA surfaces at sleep, the less often this fires.
-- **`NVreg_EnableS0ixPowerManagement=1`** (section above) tightens the half-suspended window.
-- **Keep the NVIDIA driver updated** (580.x branch) — these mmap/suspend races get fixed in driver releases.
-- **Do *not*** override the no-freeze-session drop-in to re-enable session freezing — it trades this rare race for a different, *reliable* NVIDIA deadlock that the drop-in exists to avoid.
-
-**Date discovered:** 2026-06-20 (driver 580.159.04, kernel 7.0.12-1-cachyos).
+Note: HW video decode currently runs on the dGPU (`LIBVA_DRIVER_NAME=nvidia`, following the compositor — see [environment-hybrid.md](environment-hybrid.md)), which keeps a live NVIDIA surface around and slightly raises this race's odds. The S0ix tightening is the counterweight; pinning decode back to the iGPU would reduce it but re-introduce a cross-GPU frame copy — a deliberate tradeoff, not changed here.

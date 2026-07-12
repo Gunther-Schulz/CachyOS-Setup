@@ -4,7 +4,7 @@
 
 > ✅ **Applied.** This file keeps **PRIME render-offload** env (no global NVIDIA-primary block); NVIDIA is opt-in per app via `prime-run <cmd>`. The old NVIDIA-primary version is backed up at `/etc/environment.bak`.
 >
-> ⚠️ **2026-06-30:** GNOME compositing was moved onto the **NVIDIA dGPU** by a *separate* mechanism — the [Mutter-primary udev rule](gnome-vrr-external-monitor-hybrid.md#optional--which-gpu-gnome-composites-on-mutter-primary) — to fix the [iGPU Electron/Chromium crash](amdgpu-gfx-ring-timeout.md). That doesn't change this file's PRIME-offload design, but it **flips `LIBVA_DRIVER_NAME` from `radeonsi` → `nvidia`** so HW decode follows the compositor (see below).
+> ⚠️ **2026-06-30:** GNOME compositing was moved onto the **NVIDIA dGPU** by a *separate* mechanism — the [Mutter-primary udev rule](amdgpu-gfx-ring-timeout.md) — to fix the [iGPU Electron/Chromium crash](amdgpu-gfx-ring-timeout.md). That doesn't change this file's PRIME-offload design, but it **flips `LIBVA_DRIVER_NAME` from `radeonsi` → `nvidia`** so HW decode follows the compositor (see below).
 
 **The idea:** no NVIDIA-**primary** block (which would force *every* app onto the dGPU at the env level). Keep only **PRIME render-offload** — apps default to the iGPU node unless opted into NVIDIA with `prime-run`. (Compositing itself is steered separately by the Mutter-primary udev rule, now on the dGPU.) VA-API video decode is pinned to whichever GPU composites the desktop — now the NVIDIA dGPU (see below).
 

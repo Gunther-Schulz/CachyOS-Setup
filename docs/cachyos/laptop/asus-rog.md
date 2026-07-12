@@ -1,5 +1,7 @@
 # ASUS Laptop (ROG / TUF)
 
+**Machine:** Laptop (FA607PV).
+
 `yay -S asusctl rog-control-center` for features control.
 
 **Suspend / GPU MUX:** see [gpu-mux-suspend.md](gpu-mux-suspend.md) — the FA607PV must be in Hybrid GPU mode or s2idle suspend hangs.
