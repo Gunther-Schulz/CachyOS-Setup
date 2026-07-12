@@ -60,7 +60,7 @@ PM: suspend exit
 
 Mitigations:
 - `NVreg_EnableS0ixPowerManagement=1` (above) tightens the half-suspended window.
-- Keep the NVIDIA driver updated (580.x branch) — these races get fixed upstream.
+- Keep the NVIDIA driver updated — these races get fixed upstream.
 - **Do *not* override the no-freeze-session drop-in** to re-enable session freezing — it trades this rare race for a different, *reliable* NVIDIA deadlock that the drop-in exists to avoid.
 
 Note: HW video decode currently runs on the dGPU (`LIBVA_DRIVER_NAME=nvidia`, following the compositor — see [environment-hybrid.md](environment-hybrid.md)), which keeps a live NVIDIA surface around and slightly raises this race's odds. The S0ix tightening is the counterweight; pinning decode back to the iGPU would reduce it but re-introduce a cross-GPU frame copy — a deliberate tradeoff, not changed here.

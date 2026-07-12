@@ -34,7 +34,7 @@ For better **1% lows**, set the frame limiter method to **early** in MangoJuice 
 
 Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set in Steam → game **Properties → Launch Options**. **The two machines need different strings** — `VKD3D_CONFIG=descriptor_heap` is safe *only* on Blackwell + the 595 driver (see the table):
 
-**Laptop (FA607PV — RTX 4060 Ada, 580 driver):**
+**Laptop (FA607PV — RTX 4060 Ada, nvidia-open 610):**
 ```
 SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 mangohud %command%
 ```
@@ -49,7 +49,7 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 VKD3D_CONFIG=descriptor_heap mangohud %command
 | `SteamDeck=1` | **Skips the NetEase launcher** → boots straight into the game (the reason to use it). camelCase — `SteamDeck`, not `Steamdeck`. *Caveat:* can block first-time login — if login fails, remove it for one launch, then re-add. Some games apply Deck graphics defaults when they see this, but **no reports of that for Marvel Rivals** — here it's just the launcher skip. |
 | `DXVK_NVAPI_VKREFLEX=1` | **Makes NVIDIA Reflex actually function** (NVIDIA-only) — and you must **also turn Reflex on in-game**; the two are required together. Without this, dxvk-nvapi's Vulkan Reflex layer stays *disabled by default* and the game's Reflex calls get **fake-success stubs**: the in-game toggle *looks* active but reduces **zero** latency. The old cachy spelling `PROTON_VKREFLEX=1` was removed — this upstream name is the current one. |
 | `PROTON_ENABLE_WAYLAND=1` | Native Wayland present path — a frametime win, leaner than XWayland (see note below). **Downside:** breaks the Steam overlay (uninteractable) — disable it for in-game purchases. If you get NVIDIA sync/present glitches, this is the first flag to drop. |
-| `VKD3D_CONFIG=descriptor_heap` | **Desktop ONLY (Blackwell + 595 driver).** Enables the experimental `VK_EXT_descriptor_heap` path, which on the 595 driver *fixes* the **Xid 109 "CTX SWITCH TIMEOUT"** hard crash and trims the Blackwell freeze frequency. ⚠️ **Don't use on the laptop (Ada 4060, 580 driver)** — **strongly implicated** in Xid 109 GPU hangs + graphics corruption there (2026-07-07: Xid 109 appeared while it was set and stopped when removed — *correlation, not proof*; we didn't deliberately reproduce it). Its benefit was marginal/illusory anyway, so it's not worth the risk. `PROTON_VKD3D_HEAP=1` is the removed old spelling. |
+| `VKD3D_CONFIG=descriptor_heap` | **Desktop ONLY (Blackwell + 595 driver).** Enables the experimental `VK_EXT_descriptor_heap` path, which on the 595 driver *fixes* the **Xid 109 "CTX SWITCH TIMEOUT"** hard crash and trims the Blackwell freeze frequency. ⚠️ **Don't use on the laptop (Ada 4060)** — it was strongly implicated in Xid 109 GPU hangs + graphics corruption on the old **580** driver (2026-07-07: appeared while set, stopped when removed — *correlation, not proof*). The laptop is now on **nvidia-open 610**, where the interaction is untested, so keep it off by default; its benefit was marginal/illusory anyway. `PROTON_VKD3D_HEAP=1` is the removed old spelling. |
 | `mangohud` | FPS/frametime overlay + frame limiter (see above). Optionally prefix `gamemoderun` to pin the CPU governor to performance for the session. |
 
 **NTSync is automatic — don't set it.** `ntsync` is default-on in current proton-cachyos and the `PROTON_USE_NTSYNC` flag was removed (dead no-op). `PROTON_NO_NTSYNC=1` disables it only if a title misbehaves.

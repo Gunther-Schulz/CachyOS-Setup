@@ -6,7 +6,7 @@
 
 ## Symptom
 
-External monitor — **ASUS XG27JCG**, 2560×1440, Adaptive-Sync **48–330 Hz**, on the **NVIDIA dGPU** (`DP-2`) — has **no VRR toggle** in GNOME Settings → Displays. The internal AMD-driven panel does show one. The **same monitor on the (single-GPU, RTX 5090) desktop** — otherwise identical stack (CachyOS + GNOME + Wayland + NVIDIA 580) — gets VRR fine.
+External monitor — **ASUS XG27JCG**, 2560×1440, Adaptive-Sync **48–330 Hz**, on the **NVIDIA dGPU** (`DP-2`) — has **no VRR toggle** in GNOME Settings → Displays. The internal AMD-driven panel does show one. The **same monitor on the (single-GPU, RTX 5090) desktop** — otherwise identical stack (CachyOS + GNOME + Wayland + NVIDIA) — gets VRR fine.
 
 ## Root cause — NVIDIA reports the monitor `vrr_capable=0`
 
@@ -24,7 +24,7 @@ modetest -M amdgpu    -c | grep -A3 vrr_capable   # value: 1  on the connected e
 
 NVIDIA only sets `vrr_capable=1` for a display it has auto-validated as "G-SYNC Compatible" over that link, or where the user manually ticks "Allow G-SYNC on a monitor not validated as G-SYNC Compatible" — a toggle that only exists in **`nvidia-settings`, which is X11-only**; this laptop is Wayland-only, so there's no supported way to flip it. The desktop gets VRR because that monitor sits on a native DisplayPort straight off the GPU; on the laptop the external display reaches the NVIDIA GPU over **USB-C DisplayPort-alt-mode** (this chassis has no full-size DP) — exactly the kind of link NVIDIA's auto-validation tends to reject. So it's the display wiring, not the weaker GPU. ([NVIDIA forum thread](https://forums.developer.nvidia.com/t/g-sync-compatible-monitor-not-detected-as-vrr-capable-24g2w1g4/237332))
 
-Ruled out (don't re-investigate): Mutter primary GPU (no effect — see below), GDM-on-X11 (greeter runs Wayland here), non-atomic KMS (both GPUs use atomic), and driver/hardware capability (Ada + 580 clears NVIDIA's Wayland-VRR floor).
+Ruled out (don't re-investigate): Mutter primary GPU (no effect — see below), GDM-on-X11 (greeter runs Wayland here), non-atomic KMS (both GPUs use atomic), and driver/hardware capability (Ada + a current NVIDIA driver clears the ≥Volta / ≥525 Wayland-VRR floor).
 
 ## Practical substitute — divisor cap at 330 Hz
 
