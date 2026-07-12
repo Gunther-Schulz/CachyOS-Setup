@@ -31,3 +31,19 @@ echo none | sudo tee /sys/block/sda/queue/scheduler
 echo on | sudo tee /sys/bus/usb/devices/2-5/power/control
 ```
 Replace `sda`/`2-5` with your block device and USB path (`readlink -f /sys/block/sda/device`). Persist via a udev rule matching `0bda:9210` (scheduler=none, power/control=on), then `sudo udevadm control --reload-rules && sudo udevadm trigger`. If throughput is still bad: `iommu=soft amd_iommu=off`, a BIOS update, a different port/controller, or a non-RTL9210 enclosure (ASMedia ASM2364, JMicron).
+
+## RTL9210 disconnects mid-write (even with UAS off) — USB link power management
+
+**Applied.** A *different* RTL9210 fault from the UAS one above: under sustained write load the drive **disconnects mid-copy** (file manager: "Error splicing file: Input/output error"; the filesystem remounts read-only) even in usb-storage/BOT mode. `dmesg` shows a `USB disconnect` during the write, `EXT4-fs: Remounting filesystem read-only`, and the drive re-enumerating at a *lower* USB speed.
+
+**Cause:** an RTL9210 firmware bug in USB link power-state (U1/U2) transitions — under load its power management triggers a link change that drops the link. It sits below the UAS layer, so disabling UAS doesn't help.
+
+**Fix — disable USB link power management** (applied via `/etc/udev/rules.d/50-rtl9210-no-autosuspend.rules`):
+```
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0bda", ATTR{idProduct}=="9210", ATTR{power/autosuspend_delay_ms}="0", ATTR{power/control}="on"
+```
+Then `sudo udevadm control --reload-rules` + replug.
+
+**If it still drops:** copy with `rsync -av --bwlimit=150000 --partial <src> <dst>` — the throttle eases the link and `--partial` lets you re-run to resume after a drop.
+
+**The real fix is a firmware update** to RTL9210 1.34.29+ (addresses the random disconnects), but the flasher (`UTHSB_MPtool`) is **Windows-only** (no Wine/VM; no Linux tool as of 2026). Tools: <https://github.com/bensuperpc/rtl9210>.
