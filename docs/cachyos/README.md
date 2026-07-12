@@ -15,7 +15,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 |-------|------|
 | **NVIDIA** | [nvidia/](nvidia/) — [open kernel modules (switch off closed)](nvidia/open-kernel-modules.md), PowerMizer, OpenRGB, RTX 5090 + IOMMU |
 | **Mouse stutter** | [mouse-stutter.md](peripherals/mouse-stutter.md) — DDC, mutter, Solaar, Bluetooth |
-| **System** | [system/](system/) — Swappiness, Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), vm.max_map_count |
+| **System** | [system/](system/) — [memory tuning (swap/zram/oomd)](system/memory-tuning.md), Limine, environment, GRUB custom, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), vm.max_map_count, [system-setup inventory](system-setup-inventory.md) |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
 | **Apps** | [apps/](apps/) — Packages, Joplin, Conda/Mamba, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, [Cider](apps/cider.md), [Claude Code](apps/claude-code.md), [Claude Desktop](apps/claude-desktop.md), [Discord](apps/discord.md) |
@@ -23,6 +23,6 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, PS4, Chrome flags |
 | **Audio** | [audio/](audio/) — PipeWire, Helvum, Bitwig, Jamulus, [noise suppression (DeepFilterNet3; NoiseTorch dead on PipeWire)](audio/noise-suppression.md) |
 | **Laptop** | [laptop/](laptop/) — FA607PV: [NVIDIA Dynamic Boost](laptop/nvidia-dynamic-boost.md), [GPU MUX + suspend](laptop/gpu-mux-suspend.md), [display switching](laptop/display-switching.md), [hybrid /etc/environment](laptop/environment-hybrid.md), [GNOME VRR on external monitor ❌](laptop/gnome-vrr-external-monitor-hybrid.md), [amdgpu iGPU GPU reset — Electron/Chromium 🧪](laptop/amdgpu-gfx-ring-timeout.md), ASUS ROG/TUF, prevent apps using amdgpu, S3 sleep |
-| **Recovery** | [recovery/](recovery/) — Clone drive, GRUB reinstall, paste logs |
-| **Issues** | [issues/](issues/) — Known issues, Cursor GPU |
+| **Recovery** | [recovery/](recovery/) — Clone drive, GRUB reinstall, paste logs, [enlarge boot partition](recovery/boot-part-enlarge.md) |
+| **Issues** | [issues/](issues/) — [Known issues](issues/known-issues.md) |
 | **Todo** | [todo.md](todo.md) |

@@ -42,6 +42,8 @@ echo '/swapfile none swap pri=50 0 0' | sudo tee -a /etc/fstab
 
 Cachyos sets **vm.swappiness = 100** in `/usr/lib/sysctl.d/70-cachyos-settings.conf`. Overrides in `/etc/sysctl.d/` take precedence; do not edit 70-* (vendor file).
 
+All three keys (swappiness, watermark_scale_factor, min_free_kbytes) live in the single `99-memory-freeze-mitigation.conf` below — there is no separate `99-swappiness.conf`.
+
 **What each does:**
 - **vm.swappiness = 10** — How eagerly the kernel swaps process memory. 10 = prefer freeing file cache first; 100 (Cachyos default) = treat RAM and swap equally.
 - **vm.watermark_scale_factor = 100** — kswapd’s free-memory target, in 1/10000 of RAM. 100 = 1% (~600 MB on 60 GB). Higher = larger buffer = fewer allocations trigger **direct reclaim** (the thing that blocks the UI).
