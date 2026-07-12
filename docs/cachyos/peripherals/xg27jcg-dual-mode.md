@@ -20,14 +20,14 @@
 ## GNOME
 
 - **2K:** GNOME picks res/scale automatically.
-- **5K:** GNOME defaults to 4K → use `gdctl` to force 5K (see `xg27jcg-gnome-5k.sh`).
+- **5K:** GNOME defaults to 4K → force 5K with `gdctl`.
 - Scale: 5K = 166%, 2K = 100%.
 
 ## Usage
 
-**Toggle:** `ddc-mode-switcher` (from `ddc-mode-switcher` AUR package)
+**Toggle:** [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher) — own tool, install from AUR.
 
-**Steam:** `ddc-mode-switcher mangohud %command%` — or use the scripts in `~/setup/scripts/` if not using the AUR package.
+**Steam:** `display-mode-switcher mangohud %command%`
 
 ---
 

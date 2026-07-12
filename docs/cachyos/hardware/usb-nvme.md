@@ -47,3 +47,5 @@ Then `sudo udevadm control --reload-rules` + replug.
 **If it still drops:** copy with `rsync -av --bwlimit=150000 --partial <src> <dst>` — the throttle eases the link and `--partial` lets you re-run to resume after a drop.
 
 **The real fix is a firmware update** to RTL9210 1.34.29+ (addresses the random disconnects), but the flasher (`UTHSB_MPtool`) is **Windows-only** (no Wine/VM; no Linux tool as of 2026). Tools: <https://github.com/bensuperpc/rtl9210>.
+
+**Watch the link speed:** the `usb-link-speed-tray` applet (own AUR tool, `usb-link-speed-tray-git`) shows the current USB link speed in the tray — a quick way to spot a drop to a lower gen after a disconnect.
