@@ -48,17 +48,3 @@ Manually**, then paste the license key from
 <https://taproom.cider.sh/licenses>. (If pasting the license key fails,
 fall back to the `CTP-AUTH` cookie value: browser F12 → Application →
 Cookies → `taproom.cider.sh` → copy `CTP-AUTH`.)
-
-## Lossless — not on Linux via Cider
-
-Cider is **AAC-only on Linux**: Apple's FairPlay DRM only decrypts lossless
-on Apple hardware, so lossless tracks play the ~256 kbps AAC version. Cider
-can't fix this (MusicKit exposes lossless only through FairPlay).
-
-For actual lossless **streaming** on Linux:
-
-- **Waydroid** — run the Android Apple Music app in a container. Gets 24-bit
-  lossless, but **capped at 48 kHz** (Android resamples), so CD-quality, not
-  Hi-Res. Needs a raised PipeWire sample rate + Magisk to hide root.
-- **Full Hi-Res (24/192)** — only via a **Windows/macOS VM** running the
-  official Apple Music app.
