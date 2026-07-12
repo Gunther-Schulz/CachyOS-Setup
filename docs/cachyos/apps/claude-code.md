@@ -10,16 +10,14 @@ sudo pacman -S ghostty
 
 ### Nautilus integration (Open in Ghostty)
 
-Ghostty 1.1.0+ has built-in Nautilus integration. Just install the Python extension loader:
+Ghostty 1.1.0+ has built-in Nautilus integration — just install the Python extension loader:
 
 ```bash
 sudo pacman -S python-nautilus
 nautilus -q
 ```
 
-Right-click in Nautilus will now show "Open in Ghostty".
-
-**Note:** The default "Open in Console" (KGX) entry remains — it's hardcoded by GNOME. Use the Ghostty entry instead. `nautilus-open-any-terminal` is NOT needed.
+Right-click in Nautilus now shows "Open in Ghostty". The default "Open in Console" (KGX) entry stays — it's hardcoded by GNOME; use the Ghostty entry instead. `nautilus-open-any-terminal` is NOT needed.
 
 ### Image paste
 
@@ -27,17 +25,10 @@ Requires Ghostty (or Kitty/WezTerm) + `wl-clipboard`:
 
 ```bash
 sudo pacman -S wl-clipboard
-```
-
-Verify it's actually installed (paste fails silently if missing — drag-and-drop still works, which masks the problem):
-
-```bash
 command -v wl-paste || echo "MISSING — install wl-clipboard"
 ```
 
-Copy an image to clipboard, then Ctrl+V in Claude Code to paste it.
-
-KGX/GNOME Console does NOT support image paste — it will error with `g-io-error-quark (15): No compatible transfer format found`.
+Verify it's installed — paste fails silently if missing (drag-and-drop still works, masking the problem). Copy an image, then Ctrl+V in Claude Code to paste it. KGX/GNOME Console does NOT support image paste (`g-io-error-quark (15): No compatible transfer format found`).
 
 ## Installation
 
@@ -47,59 +38,8 @@ npm install -g @anthropic-ai/claude-code
 
 ## Global permissions
 
-The global settings file is at `~/.claude/settings.json`. These permissions allow Claude Code to use all built-in tools and common git/python commands without prompting.
+`~/.claude/settings.json` is a **symlink managed by dotfiles** — edit the tracked source, not the file in place: `~/dev/Gunther-Schulz/dotfiles/claude/settings.json` (deploy via `~/dev/Gunther-Schulz/dotfiles/install.sh`). It carries the permission allowlist, hooks, and enabled plugins.
 
-### Apply permissions from terminal
+**Why permissive:** broad `Bash` access is safe unattended because `sudo` still needs a password and offsite backups cover accidental data loss — which makes a hand-maintained per-command allowlist (git, python, gh, …) redundant.
 
-```bash
-cat > ~/.claude/settings.json << 'EOF'
-{
-  "permissions": {
-    "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Edit(*)",
-      "Write(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "WebSearch(*)",
-      "WebFetch(*)",
-      "Skill(*)",
-      "Agent(*)",
-      "TaskCreate(*)",
-      "TaskUpdate(*)",
-      "TaskGet(*)",
-      "TaskList(*)",
-      "TaskOutput(*)",
-      "TaskStop(*)",
-      "AskUserQuestion(*)",
-      "EnterPlanMode(*)",
-      "ExitPlanMode(*)",
-      "EnterWorktree(*)",
-      "ExitWorktree(*)",
-      "NotebookEdit(*)",
-      "CronCreate(*)",
-      "CronDelete(*)",
-      "CronList(*)",
-      "LSP(*)",
-      "mcp__playwright__*"
-    ],
-    "defaultMode": "dontAsk"
-  },
-  "enabledPlugins": {
-    "clangd-lsp@claude-plugins-official": true
-  }
-}
-EOF
-```
-
-**What this does:**
-- `Bash(*)` — all shell commands without prompting. Safe because `sudo` requires a password, and offsite backups protect against accidental data loss. All specific bash permissions (git, python, gh, etc.) are redundant with this and not needed.
-- All built-in tools (Read, Edit, Write, Glob, Grep, etc.) — no prompts
-- Playwright MCP tools for browser automation
-- clangd LSP plugin for C/C++ intelligence
-- `defaultMode: dontAsk` — auto-allow matching permissions without confirmation
-
-### Per-project permissions
-
-Additional project-specific permissions can be added in project `.claude/settings.json` files or via `/permissions` in a session.
+Project-specific permissions go in a project's `.claude/settings.json`, or via `/permissions` in a session.
