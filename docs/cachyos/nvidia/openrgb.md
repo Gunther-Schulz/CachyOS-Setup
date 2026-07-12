@@ -29,7 +29,7 @@ Keyboard repeat issue may return.
 
 **Apply profile at login (no i2c needed):** Run `openrgb -p "PROFILE_NAME"` from session autostart so it gets DISPLAY and exits on its own (no timeout hack). Profile name must match the `.orp` filename (without `.orp`) in `~/.config/OpenRGB/` exactly (e.g. `my profile.orp` → `"my profile"`).
 
-Reference desktop file (in repo: `docs/cachyos/nvidia/openrgb-apply-profile.desktop`):
+The desktop entry is managed by dotfiles — `~/dev/Gunther-Schulz/dotfiles/desktop/openrgb-apply-profile.desktop`:
 
 ```ini
 [Desktop Entry]
@@ -40,13 +40,8 @@ Exec=openrgb -p "my profile"
 X-GNOME-Autostart-enabled=true
 ```
 
-Install (no sudo): copy to autostart. GNOME runs it at login; it appears in **Settings → Apps → Startup** so you can turn it off there if needed.
+**Deploy:** `install.sh` symlinks it to `~/.config/autostart/openrgb-apply-profile.desktop` on the **desktop** (machine-scoped). Run `~/dev/Gunther-Schulz/dotfiles/install.sh`. GNOME runs it at login; it appears in **Settings → Apps → Startup** so you can turn it off there if needed.
 
-```bash
-mkdir -p ~/.config/autostart
-cp docs/cachyos/nvidia/openrgb-apply-profile.desktop ~/.config/autostart/
-```
-
-If your profile name is not `my profile`, edit `Exec=openrgb -p "your profile name"` in the copied file.
+If your profile name is not `my profile`, edit `Exec=openrgb -p "your profile name"` in `dotfiles/desktop/openrgb-apply-profile.desktop`.
 
 If you previously used the systemd service, disable it: `systemctl --user disable openrgb-profile.service`
