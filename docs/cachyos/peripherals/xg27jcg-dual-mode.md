@@ -25,13 +25,13 @@
 
 ## Usage
 
-**Primary use — Steam per-game launch wrapper.** For games you want to run at 1440p high-refresh (the 2K/330Hz mode), add [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher) (own tool, install from AUR) to the game's **Launch Options** so it switches the monitor into 2K/330Hz for that game:
+**Primary use — Steam per-game launch wrapper.** For games you want at 1440p high-refresh (the 2K/330Hz mode), add `ddc-mode-switcher` to the game's **Launch Options** — it switches to 2K/330Hz for the game and restores 5K on exit:
 
 ```
-display-mode-switcher mangohud %command%
+ddc-mode-switcher mangohud %command%
 ```
 
-It also works standalone to toggle 5K↔2K outside Steam.
+Own tool — repo [`display-mode-switcher`](https://github.com/Gunther-Schulz/display-mode-switcher), AUR package + command `ddc-mode-switcher`. Config: `~/.config/ddc-mode-switcher/config` — set `CONN`, `NATIVE_RES`, `TOGGLE_STEPS` (copy the repo's `config.example`; the i2c bus auto-detects from the connector, so the file is portable across machines). The XG27JCG values: `CONN=DP-2`, `NATIVE_RES=5120x2880`, `TOGGLE_STEPS=("0x03 1" "0x03 20")`. Also runs standalone to toggle 5K↔2K.
 
 ---
 
