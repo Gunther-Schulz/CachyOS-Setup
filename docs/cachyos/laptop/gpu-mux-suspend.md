@@ -23,9 +23,9 @@ asusctl armoury set gpu_mux_mode 1
 - BIOS **"Display Mode" must be "Dynamic"** (not "dGPU only") for Hybrid to be allowed.
 - Confirm the panel moved to the iGPU after reboot: `cat /sys/class/drm/card*/device/boot_vga` (amdgpu card should be `1`), and `cat /sys/class/drm/*-eDP*/status` (eDP connected on the amdgpu card).
 
-**Tradeoff vs [amdgpu-prevent.md](amdgpu-prevent.md):** that doc's "dGPU only in BIOS" approach (apps default to NVIDIA) is the *opposite* of this and **breaks suspend**. Pick one:
-- **Suspend matters** → Hybrid (this doc). Apps then default to the iGPU; force NVIDIA per-app with `prime-run <app>` or `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia <app>`.
-- **Effortless dGPU-for-everything matters more than suspend** → dGPU-only, and don't rely on suspend.
+**Tradeoff — Hybrid vs dGPU-only.** Hybrid (this doc) is the *opposite* of running the GPU MUX in **dGPU-only** (apps default to NVIDIA), which **breaks suspend**. Pick one:
+- **Suspend matters** → Hybrid (this doc). Apps default to the iGPU; force NVIDIA per-app with `prime-run <app>` or `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia <app>`.
+- **Effortless dGPU-for-everything matters more than suspend** → **dGPU-only**: BIOS "Display Mode" → dGPU-only (leave the `amdgpu` module *loaded*), and set the NVIDIA/Wayland vars in `/etc/environment` so apps pick NVIDIA. Don't rely on suspend.
 
 ---
 
