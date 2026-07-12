@@ -1,8 +1,8 @@
 # LAMZU Maya X Mouse
 
-**Machine:** Desktop.
+**Machine:** Both.
 
-Configure via [Aurora web interface](https://www.lamzu.net/#/project/items). Need udev rules for dongle and direct USB.
+Configure via [Aurora web interface](https://www.lamzu.net/#/project/items) — it runs over **WebHID in a Chromium browser**, so it needs udev permissions on the dongle + direct USB. The mouse *works* without these rules; you just can't reconfigure it (DPI/polling/RGB/firmware). Deploy on **every machine you configure the mouse from** (currently only on the desktop — add to the laptop too).
 
 **Get IDs:** `lsusb | grep -i LAMZU` — run with dongle only, then with mouse connected via USB. Example: dongle `373e:001e`, mouse `373e:001c`. Give permission to both for firmware updates.
 

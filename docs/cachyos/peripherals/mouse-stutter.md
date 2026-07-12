@@ -36,7 +36,7 @@ Use one receiver/dongle for both mouse and keyboard instead of separate receiver
 
 **Cause:** i2c/DDC traffic over NVIDIA DisplayPort can cause bus contention. Blocking DDC may not fix stutter but often fixes the keyboard repeat issue.
 
-**Current:** We no longer blacklist `i2c_dev` (needed for XG27JCG DDC/Frame Rate Boost). **Observe if mouse stutter returns.** If it does, re-apply the blacklist below.
+**Current:** `i2c_dev` stays **loaded** (needed for XG27JCG DDC/Frame Rate Boost) — **confirmed not the root cause**. The blacklist is kept only as an **unconfirmed fallback candidate**: if mouse stutter returns, re-apply it below and observe.
 
 **To re-blacklist (if stutter returns):**
 ```bash
