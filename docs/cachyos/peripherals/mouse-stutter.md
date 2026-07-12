@@ -2,74 +2,21 @@
 
 **Machine:** Desktop.
 
-One or more of these can help alleviate mouse stuttering and keyboard sticking/repeating keys.
+**Most likely cause:** RF link quality between the mouse/keyboard and the receiver. After re-pairing (below) the stutter stopped and hasn't returned. (In retrospect the mouse was always a bit sluggish — it only became obvious once it got bad.)
 
-**Status:** After applying the measures below, stutter has not returned for several days. In retrospect the mouse was always somewhat sluggish; it only became obvious when it got really bad. After the fix, overshooting UI elements for a few days was normal until re-adapting to a responsive mouse. Gaming did not seem to be affected even when the desktop felt sluggish.
+## Fix — escalate in order
 
-**Best guess at the actual fix:** §2/§3 — re-pairing with Solaar and/or using a **single** receiver for both mouse and keyboard. The mutter patch (§1) is likely unrelated (and is upstream now). Several things changed at once, so unconfirmed.
+1. **Power-cycle the mouse** (switch off/on, e.g. MX Master 4) — first line; clears a bad input-path state (USB/HID or the compositor's view of the device).
+2. **Unplug / replug the receiver** — next, if the mouse on/off didn't help.
+3. **Re-pair with [Solaar](https://pwr.github.io/Solaar/)**, using a **single receiver** for both mouse and keyboard — the actual fix for the RF-link cause (clean link + less inter-receiver interference/bus load).
 
----
+**Heavy GPU load can trigger it** (e.g. generating a video in wan2gp), and it can *persist after the app exits* — step 1 (on/off) usually clears it.
 
-## 1. Patched mutter (likely no longer needed)
+## Fallback candidate — i2c_dev / DDC (unconfirmed, not the cause)
 
-The `LP #2081140` render-source fix is **upstream in current mutter** — no patch or build needed anymore. (The old `content/mutter-49-render-source/` build guide isn't in this repo.) Probably wasn't the real fix here anyway — see Status above.
-
-**GNOME / AUR (historical):** gnome-shell-performance / mutter-performance from AUR were tried — 13.x stutter returned, 12.x smooth; stutter seen with Heaven/Unigine + Telegram at high GPU load.
-
----
-
-## 2. Re-pair mouse (and keyboard) with dongle using Solaar
-
-Re-pair the devices with the receiver/dongle using [Solaar](https://pwr.github.io/Solaar/) so the link is clean.
-
----
-
-## 3. Use only a single receiver for both devices
-
-Use one receiver/dongle for both mouse and keyboard instead of separate receivers to reduce interference and bus load.
-
----
-
-## 4. Block DDC (NVIDIA Wayland)
-
-**Symptoms:** Mouse and display stutter together; keyboard freeze then repeat keys.
-
-**Cause:** i2c/DDC traffic over NVIDIA DisplayPort can cause bus contention. Blocking DDC may not fix stutter but often fixes the keyboard repeat issue.
-
-**Current:** `i2c_dev` stays **loaded** (needed for XG27JCG DDC/Frame Rate Boost) — **confirmed not the root cause**. The blacklist is kept only as an **unconfirmed fallback candidate**: if mouse stutter returns, re-apply it below and observe.
-
-**To re-blacklist (if stutter returns):**
+`i2c_dev` stays loaded (XG27JCG DDC needs it). i2c/DDC traffic over NVIDIA DisplayPort is a *possible* contributor — mostly to the **keyboard** repeat issue, not the mouse stutter. If stutter persists after the steps above, try blacklisting it:
 ```bash
 echo 'blacklist i2c_dev' | sudo tee /etc/modprobe.d/blacklist-i2c.conf
-sudo mkinitcpio -P
-sudo reboot
+sudo mkinitcpio -P && sudo reboot        # undo: rm the file, mkinitcpio -P, reboot
 ```
-
-**To un-blacklist:**
-```bash
-sudo rm /etc/modprobe.d/blacklist-i2c.conf
-sudo mkinitcpio -P
-sudo reboot
-```
-
-**Verify blacklist active:** `lsmod | grep i2c_dev` shows nothing. **Verify un-blacklisted:** `i2c_dev` loads when ddcutil or OpenRGB needs it (or at boot).
-
-**Find blacklist file (if path differs):** `grep -r i2c /etc/modprobe.d/`
-
-**If you use OpenRGB:** See [OpenRGB](../nvidia/openrgb.md).
-
----
-
-## 5. Turn off Bluetooth
-
-Turn off Bluetooth to rule out interference (not sure if the OS switch is sufficient; try disabling the service or adapter if needed).
-
----
-
-## Stutter triggered by GPU load, persists after app exit
-
-**Observed:** No stutter → start wan2gp and generate a video → mouse stutters during generation → stutter **persists** after generation finishes and after exiting wan2gp.
-
-**Different in detail, similar overall (loading model):** While *loading* a model in wan2gp (not during generation), stutter occurred once that behaved differently in detail: constant intensity, did not go away on its own (unlike the usual GPU-load stutter, which varies and clears after a few seconds). It only stopped after power-cycling the mouse (Logitech MX Master 4: switch mouse off and on again). Same family of issue overall.
-
-**Workaround:** Power-cycling the mouse (unplug/replug USB or turn receiver off/on, or switch mouse off/on, e.g. MX Master / MX Master 4) can clear the stutter — suggests the bad state was in the input path (USB/hid or compositor's view of that device).
+(If you use [OpenRGB](../nvidia/openrgb.md), it needs `i2c_dev` too.)
