@@ -9,9 +9,10 @@ profile dir `~/.thunderbird/`, so the Thunderbird extension works unchanged.
 ## Our fork
 
 We run a **fork** of [TKasperczyk/thunderbird-mcp](https://github.com/TKasperczyk/thunderbird-mcp):
-[Gunther-Schulz/thunderbird-mcp](https://github.com/Gunther-Schulz/thunderbird-mcp)
-(cloned at `~/dev/Gunther-Schulz/thunderbird-mcp`; remotes: `origin` = upstream,
-`fork` = ours).
+[Gunther-Schulz/thunderbird-mcp](https://github.com/Gunther-Schulz/thunderbird-mcp),
+cloned at `~/dev/Gunther-Schulz/thunderbird-mcp`. Clone + MCP registration are
+done by dotfiles `claude/install.sh` §9 (which also adds an `upstream` remote for
+rebasing) — that script is the reproducible source of truth, not `~/.claude.json`.
 
 **Why the fork:** one commit adds a **`saveMessage`** bridge tool — writes a
 message's full `.eml` and/or its attachments to a caller-chosen path (reuses
