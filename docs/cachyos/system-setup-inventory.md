@@ -30,7 +30,7 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | Cider repo | `[cidercollective]` / `SigLevel = Required TrustedOnly` / `Server = https://repo.cider.sh/arch` in `/etc/pacman.conf` | `apps/cider.md` | universal |
 | Cider install | `sudo pacman -Sy && sudo pacman -S cider` (rm stray `/usr/bin/cider` symlink if migrating) | `apps/cider.md` | universal |
 | Core packages | `sudo pacman -S rclone cuda nvtop betterbird gparted steam pavucontrol helvum vercrypt`; `sudo pacman -S lutris wine lib32-freetype2 freetype2 lib32-gnutls` | `apps/packages.md` | universal |
-| AUR packages | `yay -S brave-bin miniconda3 gitkraken svn ttf-ms-fonts ttf-mac-fonts adobe-base-14-fonts numix-gtk-theme`; `yay -S galaxybudsclient-bin logiops rclone-manager-git heroic-games-launcher-bin noisetorch` | `apps/packages.md` | universal |
+| AUR packages | `yay -S brave-bin miniconda3 gitkraken svn ttf-ms-fonts ttf-mac-fonts adobe-base-14-fonts numix-gtk-theme`; `yay -S galaxybudsclient-bin logiops rclone-manager-git heroic-games-launcher-bin` | `apps/packages.md` | universal |
 | ASUS control | `yay -S asusctl rog-control-center` | `apps/packages.md` | laptop |
 | Ghostty + Nautilus | `sudo pacman -S ghostty`; `sudo pacman -S python-nautilus` + `nautilus -q` | `apps/claude-code.md` | universal |
 | wl-clipboard | `sudo pacman -S wl-clipboard` | `apps/claude-code.md` | universal |
@@ -110,7 +110,7 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | claude-cowork (user) | `systemctl --user enable --now claude-cowork` | `apps/claude-desktop.md` | universal |
 | bt-amp-reconnect (user) | full unit at `~/.config/systemd/user/bt-amp-reconnect.service`; `systemctl --user enable` | `peripherals/bluetooth.md` | **laptop only** (SMSL amp, MAC-specific) |
 | nvidia-powerd | `sudo systemctl enable --now nvidia-powerd` | `laptop/nvidia-dynamic-boost.md` | **laptop only** (no-op desktop) |
-| systemd-oomd | assert enabled; `earlyoom` disabled | `system/memory-tuning.md` | universal |
+| earlyoom | `sudo systemctl enable --now earlyoom` — active OOM daemon; `systemd-oomd` disabled (kills desktop apps too eagerly under PSI/swap pressure). SIGTERM <10% free RAM+swap, SIGKILL <5%, `--avoid` init/systemd/Xorg/sshd. **Verified laptop; desktop unverified — see todo.md** | `apps/packages.md` | universal |
 | mem_sleep oneshot | enable+start (unit body not given verbatim) | `laptop/s3-sleep.md` | laptop |
 | coolercontrold | `sudo systemctl restart coolercontrold` (CoolerControl install itself is **undocumented**) | `hardware/motherboard-fans.md` | desktop |
 
