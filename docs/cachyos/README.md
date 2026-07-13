@@ -20,7 +20,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 | **System** | [system/](system/) — Limine, environment, [GRUB default kernel (newest, not LTS)](system/grub-default-kernel.md), [system-setup inventory](system-setup-inventory.md) |
 | **Hardware** | [hardware/](hardware/) — USB NVMe, hide AMD APU, motherboard fans (nct6775) |
 | **Desktop** | [desktop/](desktop/) — GNOME, VLC |
-| **Apps** | [apps/](apps/) — Packages, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, [Cider](apps/cider.md), [Claude Code](apps/claude-code.md), [Claude Desktop](apps/claude-desktop.md), [Discord](apps/discord.md) |
+| **Apps** | [apps/](apps/) — Packages, Enpass, Brave, VirtualBox, QGIS, TexLive, HP Printer, [Cider](apps/cider.md), [Claude Code](apps/claude-code.md), [Claude Desktop](apps/claude-desktop.md), [Thunderbird/Betterbird MCP](apps/thunderbird-mcp.md), [Discord](apps/discord.md) |
 | **Peripherals** | [peripherals/](peripherals/) — LAMZU Maya X, [Bluetooth](peripherals/bluetooth.md) (incl. SMSL AO300PRO amp reconnect), [XG27JCG dual-mode](peripherals/xg27jcg-dual-mode.md) |
 | **Gaming** | [gaming/](gaming/) — Proton, Steam, Lutris, Chrome flags |
 | **Audio** | [audio/](audio/) — Bitwig, [noise suppression (DeepFilterNet3)](audio/noise-suppression.md) |
