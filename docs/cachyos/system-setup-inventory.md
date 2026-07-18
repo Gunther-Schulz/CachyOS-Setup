@@ -32,7 +32,7 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | Core packages | `sudo pacman -S rclone cuda nvtop betterbird gparted steam pavucontrol helvum vercrypt`; `sudo pacman -S lutris wine lib32-freetype2 freetype2 lib32-gnutls` | `apps/packages.md` | universal |
 | AUR packages | `yay -S brave-bin miniconda3 gitkraken svn ttf-ms-fonts ttf-mac-fonts adobe-base-14-fonts numix-gtk-theme`; `yay -S galaxybudsclient-bin logiops rclone-manager-git heroic-games-launcher-bin` | `apps/packages.md` | universal |
 | ASUS control | `yay -S asusctl rog-control-center` | `apps/packages.md` | laptop |
-| Ghostty + Nautilus | `sudo pacman -S ghostty`; `sudo pacman -S python-nautilus` + `nautilus -q` | `apps/claude-code.md` | universal |
+| Ghostty + Nautilus | `sudo pacman -S ghostty`; `yay -S nautilus-open-any-terminal`; gsettings `terminal 'custom'` + `custom-local-command 'ghostty --working-directory=%s'`; `sudo pacman -Rns gnome-terminal` | `apps/claude-code.md` | universal |
 | wl-clipboard | `sudo pacman -S wl-clipboard` | `apps/claude-code.md` | universal |
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | `apps/claude-code.md` | universal |
 | Claude Desktop | `paru -S claude-desktop-bin claude-cowork-service`; KVM: `paru -S qemu-base qemu-img virtiofsd edk2-ovmf` | `apps/claude-desktop.md` | universal |
