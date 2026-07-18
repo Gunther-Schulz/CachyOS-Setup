@@ -37,4 +37,10 @@ desktop is down — mark them, don't guess.
   untagged = both.
 - **Cross-link, don't duplicate:** if a real artifact exists (script, config,
   hook — e.g. in the dotfiles repo), link to it instead of pasting a copy.
+  **Point, don't restate the mechanics.** Name the artifact and how to deploy
+  it — never re-tell symlink targets, install commands, or machine-scoping
+  rules that the other repo already owns. Those restatements are what goes
+  stale: dotfiles changed its deploy path to `dot apply` and every doc that had
+  spelled out `install.sh` was silently wrong. One canonical home per fact
+  applies across repos, not just within one.
 - Terse over verbose; commands in fenced blocks; one canonical home per fact.

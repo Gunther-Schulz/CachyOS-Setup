@@ -7,6 +7,6 @@ Two scripts toggle between using only the external monitor vs. extending across 
 | `~/display-solo` | External monitor **only**; built-in laptop panel **off**. |
 | `~/display-both` | **Extend** across both (external primary, laptop panel placed to its right). |
 
-**Managed by dotfiles.** The scripts live in `~/dev/Gunther-Schulz/dotfiles/laptop/` (`display-solo`, `display-both`); `install.sh` symlinks them to `~/display-solo` / `~/display-both` on the **laptop** (machine-scoped — see the dotfiles README). To (re)deploy: run `~/dev/Gunther-Schulz/dotfiles/install.sh`.
+**Managed by dotfiles** (`dotfiles/laptop/`, laptop-scoped). Deploy with `~/dev/Gunther-Schulz/dotfiles/dot apply`.
 
 **Use:** `~/display-solo` / `~/display-both`. Each prints what it applied (e.g. `✓ External only: DP-2 @ 2560x1440@…`).

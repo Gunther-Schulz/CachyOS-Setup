@@ -61,7 +61,7 @@ npm install -g @anthropic-ai/claude-code
 
 ## Global permissions
 
-`~/.claude/settings.json` is a **symlink managed by dotfiles** — edit the tracked source, not the file in place: `~/dev/Gunther-Schulz/dotfiles/claude/settings.json` (deploy via `~/dev/Gunther-Schulz/dotfiles/install.sh`). It carries the permission allowlist, hooks, and enabled plugins.
+`~/.claude/settings.json` is a **symlink managed by dotfiles** — edit the tracked source, not the file in place: `~/dev/Gunther-Schulz/dotfiles/claude/settings.json` (deploy via `~/dev/Gunther-Schulz/dotfiles/dot apply`). It carries the permission allowlist, hooks, and enabled plugins.
 
 **Why permissive:** broad `Bash` access is safe unattended because `sudo` still needs a password and offsite backups cover accidental data loss — which makes a hand-maintained per-command allowlist (git, python, gh, …) redundant.
 

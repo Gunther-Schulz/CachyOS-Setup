@@ -40,7 +40,7 @@ Exec=openrgb -p "my profile"
 X-GNOME-Autostart-enabled=true
 ```
 
-**Deploy:** `install.sh` symlinks it to `~/.config/autostart/openrgb-apply-profile.desktop` on the **desktop** (machine-scoped). Run `~/dev/Gunther-Schulz/dotfiles/install.sh`. GNOME runs it at login; it appears in **Settings → Apps → Startup** so you can turn it off there if needed.
+**Deploy:** managed by dotfiles (`dotfiles/desktop/`, desktop-scoped) — run `~/dev/Gunther-Schulz/dotfiles/dot apply`. GNOME runs it at login; it appears in **Settings → Apps → Startup** so you can turn it off there if needed.
 
 If your profile name is not `my profile`, edit `Exec=openrgb -p "your profile name"` in `dotfiles/desktop/openrgb-apply-profile.desktop`.
 
