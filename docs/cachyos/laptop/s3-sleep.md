@@ -42,4 +42,4 @@ The **LAMZU Maya X 8K dongle** (USB `373e:001e`) was the only USB device left `p
 ```
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="373e", ATTR{idProduct}=="001e", ATTR{power/wakeup}="disabled"
 ```
-Then `sudo udevadm control --reload` + replug. Trade-off: the mouse no longer wakes the laptop (use keyboard/power button). Aside: GNOME's `sleep-inactive-ac-type` defaults to `'nothing'`, so on AC it never *auto*-suspends — set `'suspend'` if idle-suspend on AC is wanted.
+Then `sudo udevadm control --reload` + replug. Trade-off: the mouse no longer wakes the laptop (use keyboard/power button).
