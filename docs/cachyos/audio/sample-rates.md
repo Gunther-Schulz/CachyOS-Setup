@@ -24,7 +24,14 @@ machine-scope it:
 
 | Machine | Digital out | Effect of the wider list |
 |---|---|---|
-| **Desktop** | B850-G onboard **ALC1220P** optical S/PDIF | Graph follows the source; the 44.1 → 48 resample disappears. ⚠ *Unverified — desktop is down (RAM failure); rates read from the ASUS spec sheet, not the machine.* |
+| **Desktop** | B850-G onboard **ALC1220P** optical S/PDIF — ⚠ *which path is actually in use is unconfirmed, see below* | Graph follows the source; the 44.1 → 48 resample disappears. ⚠ *Unverified — desktop is down (RAM failure); rates read from the ASUS spec sheet, not the machine.* |
+
+⚠ **Open question on the desktop:** [`todo.md`](../todo.md) describes the hi-fi chain
+as *PC → dock → optical*, i.e. through the same Orico dock as the laptop. If that is
+what the desktop actually runs, it inherits the dock's 16-bit/48 kHz ceiling, the
+ALC1220P is unused, and this config is inert there too — the fix would be to move
+the cable to the motherboard's optical port, not to change any config. Settle this
+before trusting the desktop row above.
 | **Laptop** | Orico dock, JMTek `0c76:1277` | **Inert.** The chip advertises only 48 kHz, so PipeWire still lands there. See [Orico dock → TOSLINK](../peripherals/orico-dock-toslink.md) — that ceiling is hardware, not config. |
 
 ## Verify
