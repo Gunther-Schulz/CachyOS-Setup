@@ -3,6 +3,23 @@
 Third-party Apple Music client (Cider 4). Needs an active Apple Music
 subscription **and** a one-time Cider license (~$4).
 
+## ⚠ Turn the Audio Lab DSP off
+
+Cider ships its Audio Lab DSP **enabled**, and it is audibly degrading —
+grain/grit on cymbals and hi-hats, worst on dense transients. Settings →
+Audio Lab → disable all modules (CAP, COCS, CAR, CTS). Confirmed by ear:
+grain disappears with the DSP off, returns with it on.
+
+Why: CAP ("Cider Adrenaline Processor") claims to make lossy audio sound
+lossless. Information AAC discarded cannot be recovered, so what it adds is
+synthesised harmonics — plus whatever codec artifacts get lifted with them,
+and clipping where the boost meets an already-hot master. Cymbals do gain
+apparent detail; the cost is a metallic edge that does not belong to the
+recording. Prefer the plain lossy artifacts.
+
+Not fixable by hardware — the distortion is in the samples before they
+reach any DAC.
+
 ## Install — official Arch repo (auto-updates via pacman)
 
 itch.io distribution is **deprecated** (as of Feb 2025). Don't download the
