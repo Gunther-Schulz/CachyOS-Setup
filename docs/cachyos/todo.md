@@ -24,6 +24,12 @@
   3. Idle soak a full day — CO fails at *idle/light load*, not just under stress. Watch `ras-mc-ctl --errors` / `journalctl -k | grep -iE "mce|machine check"`: corrected Cache Hierarchy errors = back off 5 on that core even without a crash (the Linux equivalent of WHEA 18/19 warnings).
   4. Any single failing core: relax only that core's offset (+5), re-run; then a week of normal use as final judge.
   Payoff at 105 W: ~95% multicore, ~half the load power/heat; gaming and single-thread unaffected (X3D loads run 60–90 W anyway).
+  **Before/after benchmark protocol** (run the IDENTICAL set at stock BEFORE touching anything, save results into the repo, e.g. `docs/cachyos/hardware/9950x3d-eco-baseline.md`):
+  - Multicore throughput: `mprime` bench mode or `stress-ng --matrix 0 --metrics-brief -t 60`; plus a real workload you care about — a kernel/large-project compile timed with `time` (best of 3, warm cache) is the honest one.
+  - Single-thread: `geekbench6` (AUR) or `stress-ng --cpu 1 --cpu-method fft --metrics-brief -t 60` — expect ~0 change; this is the "did CO/ECO hurt boost" check.
+  - Sustained clocks + power + temps DURING the multicore run, logged not eyeballed: `sudo turbostat --interval 5 --quiet --show PkgWatt,CoreTmp,Busy%,Bzy_MHz` teed to a file for the run's duration. The turbostat log is the real payoff evidence — perf-per-watt before vs after.
+  - Gaming proxy (X3D's job): one repeatable in-game benchmark or `glmark2`/a capped-FPS scene with `mangohud` logging (frametime p1/p99, not just avg FPS) — same scene, same settings, both runs.
+  - Rules: same kernel + governor + fan profile both runs; note ambient temp; 3 runs each, report median; do the AFTER run only once CO has passed the stability regimen (an unstable-but-fast result is noise).
 - **Desktop:** fan-curve optimization — **sequenced LAST, after board clearance AND the ECO/CO tuning above** (curves tuned against pre-ECO heat output would all be wrong afterward; tune once against the final thermal envelope). Assets already in repo: `fan-control/` (coolercontrol scripts + channel labels). Approach: with 105 W ECO + CO settled, log temps under (a) idle, (b) gaming-typical 60–90 W, (c) all-core 105 W; then set curves for silence at (a)/(b) and acceptable acoustics at (c) — the X3D cache die tolerates up to ~89 °C Tjmax, so target quiet-first, not cool-first.
 - Use Limine bootloader on the laptop (automatic snapshots supported).
 - Compare Brave Wayland flags to standard values; possibly remove some.
