@@ -20,11 +20,28 @@ measured HDR contrast is ~1,300:1 — *identical to SDR* ([Tom's Hardware](https
 DisplayHDR 600 is a brightness rating (785 nits measured full-field), not a contrast one.
 So on SDR content HDR costs contrast and gains nothing.
 
-**Observed on this unit:** with HDR on, SDR content looks softer — lower apparent contrast
-across the image. Black levels still resolve; shadow detail is not crushed. Consistent with
-SDR white being mapped to a reference level well below the panel's HDR headroom, with no
-matching gain in black level (GNOME's SDR-brightness control is
-`org.gnome.mutter output-luminance`, default 100%).
+**Observed on this unit:** with HDR on, SDR content looks softer and less punchy — washed
+out / flat, i.e. lower apparent contrast across the image. Black levels still resolve;
+shadow detail is not crushed. Nothing looks broken, which is why it's easy to second-guess.
+
+**Why.** In SDR, desktop white maps to the panel max (354 nits) and black sits at whatever
+the IPS backlight leaks — the full ~1,230:1. In HDR the compositor reserves headroom above
+white for highlights, so desktop white maps to a *reference level* partway up instead, while
+black is unchanged (the backlight leaks the same either way). Top of the range moves down,
+bottom stays put → less range → "softer". GNOME's SDR level is
+`org.gnome.mutter output-luminance` (default 100%), exposed as the SDR-brightness slider in
+Settings → Displays when HDR is on.
+
+**Why it reads as a colour problem when it isn't one.** Perceived colourfulness rises with
+luminance (Hunt effect) and with contrast (Stevens effect). Compressing the luminance range
+leaves colour coordinates untouched — measurably the same reds — but the eye reads them as
+less vivid. So "colours less punchy" is an accurate description of a contrast change, not a
+colour error, and there's nothing to correct in the Color menu.
+
+Diagnosing which part bothers you: a large black area going dark-grey = lifted black floor
+(not tunable here); a white page looking dim = reference-white mapping (tunable — the SDR
+slider above); flat-looking photos with no identifiable wrong colour = Hunt/Stevens,
+secondary to the contrast loss.
 
 **The concrete cost:** while HDR is active the OSD greys out GameVisual, Contrast, Shadow
 Boost, Blue Light Filter and the whole Color menu (manual p. 1-4) — every calibrated
