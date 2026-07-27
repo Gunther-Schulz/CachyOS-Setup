@@ -20,16 +20,21 @@ measured HDR contrast is ~1,300:1 — *identical to SDR* ([Tom's Hardware](https
 DisplayHDR 600 is a brightness rating (785 nits measured full-field), not a contrast one.
 So on SDR content HDR costs contrast and gains nothing.
 
-Confirmed on this unit with a black-level ramp: **steps 0–4/255 are indistinguishable with
-HDR on, fine with it off.** Matches Tom's measured EOTF running too dark from 0–15%.
+**Observed on this unit:** with HDR on, SDR content looks softer — lower apparent contrast
+across the image. Black levels still resolve; shadow detail is not crushed. Consistent with
+SDR white being mapped to a reference level well below the panel's HDR headroom, with no
+matching gain in black level (GNOME's SDR-brightness control is
+`org.gnome.mutter output-luminance`, default 100%).
 
-**Don't chase Dynamic Dimming as the fix.** Tom's prescribes turning it off to restore
-shadow detail; it was already off here and the crush remained. On SDR-in-HDR the crush is
-in the tone-mapping path, not the dimming algorithm — not tunable.
+**The concrete cost:** while HDR is active the OSD greys out GameVisual, Contrast, Shadow
+Boost, Blue Light Filter and the whole Color menu (manual p. 1-4) — every calibrated
+setting below is out of circuit. Only Dynamic Dimming stays adjustable. DDC still *reports*
+the old values; reported ≠ in effect.
 
-**Second cost:** while HDR is active the OSD greys out GameVisual, Contrast, Shadow Boost,
-Blue Light Filter and the whole Color menu (manual p. 1-4) — every calibrated setting below
-is out of circuit. Only Dynamic Dimming stays adjustable.
+Note [PC Gamer](https://www.pcgamer.com/hardware/gaming-monitors/asus-rog-strix-xg27jcg-review/)
+reaches the opposite conclusion — "SDR content calibration in HDR mode is also really nicely
+judged, so there's no real downside to enabling HDR" — but tested on Windows, where SDR-in-HDR
+takes a different path than mutter's. The softness above is what this setup actually shows.
 
 Worth enabling only for genuinely HDR games, where the 785-nit highlights pay off. Gaming
 HDR is the mode to use there — measured "almost perfectly on spec"; Adjustable HDR only
