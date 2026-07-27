@@ -43,5 +43,6 @@ Also runs standalone to toggle 5K↔2K.
 
 ---
 
+- [XG27JCG image settings](xg27jcg-image-settings.md) — SDR OSD values, HDR verdict
 - [Mouse stutter](../peripherals/mouse-stutter.md) — i2c_dev
 - [ddcutil](https://www.ddcutil.com/)
