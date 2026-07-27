@@ -7,7 +7,7 @@ Streamlined reference from a single-source doc. **Reference:** `content/cachyos-
 - **Desktop** — AMD Ryzen 9 9950X3D, ASUS ROG STRIX B850-G GAMING WIFI, RTX 5090. *(Currently down — RAM failure.)*
 - **Laptop** — ASUS TUF Gaming A16 **FA607PV**: Ryzen 9 7845HX + RTX 4060 + Radeon iGPU.
 
-**Convention:** machine-specific docs carry a `**Machine:**` tag at the top (Desktop / Laptop / Both); untagged docs apply to both. Everything in [`laptop/`](laptop/) is the laptop; [`fan-control/`](../../fan-control/) is the desktop.
+**Convention:** machine-specific docs carry a `**Machine:**` tag at the top (Desktop / Laptop / Both); untagged docs apply to both. Everything in [`laptop/`](laptop/) is the laptop; [`fan-control/`](../../fan-control/) is the desktop. [`monitor-tests/`](../../monitor-tests/) holds by-eye test patterns for monitor settings.
 
 **Doc style:** clean-state — current *applied* config + why, not a history of everything tried. Full guidelines: [`CLAUDE.md`](../../CLAUDE.md).
 

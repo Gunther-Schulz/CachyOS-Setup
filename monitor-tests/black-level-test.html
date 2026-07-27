@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XG27JCG bloom test</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;
+    font:16px/1.5 system-ui,sans-serif;overflow:hidden;cursor:crosshair}
+  #hint{position:fixed;bottom:12px;left:12px;color:#555;font-size:13px}
+  .panel{position:absolute;inset:0;display:none;place-items:center}
+  .panel.on{display:grid}
+  /* 1: moving white box */
+  #box{width:22vw;height:22vh;background:#fff;position:absolute;
+    left:39vw;top:39vh;transition:none}
+  /* 2: white text on black */
+  #text{max-width:60ch;padding:2rem;font-size:1.1rem}
+  /* 3: black-level steps */
+  #steps{display:flex;gap:0;width:80vw;height:40vh}
+  #steps div{flex:1;display:grid;place-items:end center;
+    font-size:11px;color:#888;padding-bottom:4px}
+  /* 4: small bright spot on full black */
+  #spot{width:60px;height:60px;border-radius:50%;background:#fff}
+  /* 5: letterbox sim */
+  #lb{width:100vw;height:56.25vw;max-height:100vh;background:#fff}
+</style>
+
+<div class="panel on" id="p1"><div id="box"></div></div>
+
+<div class="panel" id="p2"><div id="text">
+  <p>Look at the background <em>between</em> these lines of text, then at an
+  empty region of the same black field far from any text. On a panel with
+  coarse edge-lit dimming the area near the text is measurably lighter —
+  a grey wash that follows the bright content.</p>
+  <p>This is the scenario a dark-mode desktop puts on screen permanently.
+  If you can see the difference here, HDR is costing you black level in
+  everyday use.</p>
+</div></div>
+
+<div class="panel" id="p3"><div id="steps"></div></div>
+
+<div class="panel" id="p4"><div id="spot"></div></div>
+
+<div class="panel" id="p5"><div id="lb"></div></div>
+
+<div id="hint">1–5 switch pattern · arrows/mouse move the box (1) · F11 fullscreen</div>
+
+<script>
+  // black-level steps: 0,1,2,3,4,6,8,12 /255
+  const steps = document.getElementById('steps');
+  [0,1,2,3,4,6,8,12].forEach(v => {
+    const d = document.createElement('div');
+    d.style.background = `rgb(${v},${v},${v})`;
+    d.textContent = v;
+    steps.appendChild(d);
+  });
+
+  const panels = [...document.querySelectorAll('.panel')];
+  addEventListener('keydown', e => {
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= panels.length) {
+      panels.forEach(p => p.classList.remove('on'));
+      panels[n - 1].classList.add('on');
+    }
+    const box = document.getElementById('box');
+    const st = 4;
+    if (e.key === 'ArrowLeft')  box.style.left = (parseFloat(box.style.left || 39) - st) + 'vw';
+    if (e.key === 'ArrowRight') box.style.left = (parseFloat(box.style.left || 39) + st) + 'vw';
+    if (e.key === 'ArrowUp')    box.style.top  = (parseFloat(box.style.top  || 39) - st) + 'vh';
+    if (e.key === 'ArrowDown')  box.style.top  = (parseFloat(box.style.top  || 39) + st) + 'vh';
+  });
+
+  addEventListener('mousemove', e => {
+    const box = document.getElementById('box');
+    if (!document.getElementById('p1').classList.contains('on')) return;
+    box.style.left = (e.clientX / innerWidth  * 100 - 11) + 'vw';
+    box.style.top  = (e.clientY / innerHeight * 100 - 11) + 'vh';
+  });
+</script>

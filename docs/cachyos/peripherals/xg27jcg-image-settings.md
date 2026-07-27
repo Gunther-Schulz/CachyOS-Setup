@@ -65,7 +65,7 @@ Verified against the monitor over DDC unless marked otherwise.
 |---|---|---|---|
 | Gaming | GameVisual | **Racing** | 2.35 dE out-of-box; calibration only reaches 0.34 dE — invisible gain |
 | Gaming | Shadow Boost | Off | gaming aid; moves dark-tone gamma off reference |
-| Gaming | **Variable OD** | **8** / 20 | Tom's review setting — see below |
+| Gaming | **Variable OD** | **6** / 20 | judged on this unit — see below |
 | Image | Brightness | **30** | ambient-dependent, see below |
 | Image | Contrast | **80** | where the ~1,300:1 measurements were taken |
 | Image | Dynamic Dimming | Off | 10 edge-lit zones pump visibly on static content |
@@ -90,12 +90,17 @@ Contrast, Shadow Boost, Colour and Dynamic Dimming, and Racing is the more accur
 **Brightness** is a room variable, not a calibration target. SDR max is 354 nits, so 30 ≈
 105 nits — a dark-room value. Target: a white page looks like paper, not a lamp.
 
-## Variable OD (overdrive) — 8 of 20
+## Variable OD (overdrive) — 6 of 20
+
+**Judged on this unit** with [`monitor-tests/overdrive-test.html`](../../../monitor-tests/overdrive-test.html):
+6 is the balance point. Some smear is always present and **does not fully clear at any
+setting** — the choice is smear vs. overshoot, not smear vs. clean. Don't chase a setting
+that removes it entirely; there isn't one. (Tom's measured at 8/20 and called it "a superb
+overdrive" — 6 vs 8 is within sample-to-sample variation, and 6 read better here.)
 
 Overdrive drives the crystals harder to switch faster. Too low → smearing; too high →
 **overshoot**, a bright halo trailing moving objects, which looks worse than the smear it
-was meant to fix. 8/20 is what Tom's used to measure ("so it wasn't working aggressively"),
-calling the result "a superb overdrive".
+was meant to fix.
 
 Conservative is right here for two reasons: the panel already draws a full white field in
 3–4 ms, and at 330 Hz a frame is ~3 ms — little blur is left for overdrive to remove. And
@@ -103,8 +108,11 @@ with **no VRR on the laptop** (NVIDIA `vrr_capable=0`, see the VRR doc) the refr
 fixed, so there's no moving target for the "Variable" part to chase; one moderate setting
 holds.
 
-Verify per-unit on [TestUFO ghosting](https://testufo.com/ghosting): dark smear behind the
-object → raise; bright halo/light outline → lower; clean edges → correct.
+To re-judge: **track the moving block with your eyes** — staring shows sample-and-hold
+blur, an eye artifact unaffected by overdrive, and is the usual reason the test seems
+unjudgeable. Calibrate on the extremes (0 = smear, 20 = halo) before assessing a middle
+value. TestUFO's default UFO is high-contrast and barely stresses the grey-to-grey
+transitions overdrive actually governs — hence the local test page.
 
 **Not the same as ELMB.** Overdrive changes pixel transition speed; ELMB strobes the
 backlight. ELMB2 needs VRR off *and* >120 Hz — both true on the laptop, so it's available
@@ -157,6 +165,7 @@ Two documented causes before suspecting a fault:
 
 ---
 
+- [`monitor-tests/`](../../../monitor-tests/) — the overdrive and black-level test patterns used here
 - [xg27jcg-dual-mode.md](xg27jcg-dual-mode.md) — 5K↔2K switching, `ddc-mode-switcher`
 - [../laptop/gnome-vrr-external-monitor-hybrid.md](../laptop/gnome-vrr-external-monitor-hybrid.md) — no VRR on this monitor on the laptop (NVIDIA `vrr_capable=0`)
 - [manual](https://dlcdnets.asus.com/pub/ASUS/LCD%20Monitors/XG27JCG/XG27JCG_English.pdf) (OSD reference: §3.1.2)

@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>XG27JCG overdrive test</title>
+<style>
+  html,body{margin:0;height:100%;background:#151515;color:#ccc;overflow:hidden;
+    font:14px/1.5 system-ui,sans-serif}
+  #stage{position:relative;height:78vh;width:100%;overflow:hidden}
+  .lane{position:absolute;left:0;width:100%;height:var(--h);display:flex;align-items:center}
+  .lane .bg{position:absolute;inset:0}
+  .obj{position:absolute;width:170px;height:calc(var(--h) - 16px);top:8px;
+    will-change:transform}
+  .label{position:absolute;left:8px;top:4px;font-size:11px;color:#888;z-index:5;
+    text-shadow:0 0 3px #000;pointer-events:none}
+  #ui{height:22vh;padding:10px 16px;box-sizing:border-box;background:#0d0d0d;
+    border-top:1px solid #333;display:flex;gap:28px}
+  #ui section{flex:1}
+  h2{margin:0 0 6px;font-size:13px;color:#fff;font-weight:600}
+  p{margin:3px 0;font-size:12.5px;color:#aaa}
+  b{color:#e8e8e8}
+  .warn{color:#e0b050}
+  .good{color:#7fc77f}
+  input[type=range]{width:150px;vertical-align:middle}
+  kbd{background:#262626;border:1px solid #3a3a3a;border-radius:3px;padding:0 4px;
+    font-size:11px;color:#ccc}
+</style>
+
+<div id="stage"></div>
+
+<div id="ui">
+  <section>
+    <h2>How to look</h2>
+    <p><b>Track the moving block with your eyes.</b> Do not stare at a fixed point —
+       that shows sample-and-hold blur, not overdrive.</p>
+    <p>Look at the <b>trailing edge</b> (the side it came from).</p>
+    <p>Speed <input type="range" id="spd" min="2" max="14" step="1" value="6">
+       <span id="spdv">6</span> s/sweep &nbsp; <kbd>space</kbd> pause</p>
+  </section>
+  <section>
+    <h2>What it means</h2>
+    <p><span class="warn">Dark smear / trail behind</span> → overdrive too <b>low</b>, raise it.</p>
+    <p><span class="warn">Bright halo or pale outline behind</span> → <b>overshoot</b>, lower it.</p>
+    <p><span class="good">Clean edge, no trail either way</span> → correct, leave it.</p>
+  </section>
+  <section>
+    <h2>Method</h2>
+    <p>Judging <b>8</b> alone is hard. Calibrate your eye first:</p>
+    <p>Set OD to <b>0</b> → memorise the smear. Set to <b>20</b> → memorise the halo.
+       Then your candidate value and see which it resembles.</p>
+    <p><b>Settled on this panel: 6.</b> Some smear remains at 6 and does not fully clear
+       at any setting — the trade is smear vs. overshoot, and 6 is the balance point.</p>
+  </section>
+</div>
+
+<script>
+  // Grey-to-grey transitions stress overdrive hardest — that is what the OSD
+  // means by "improves the gray level response time". Row 4 is high-contrast
+  // for reference; the grey rows are the ones that actually reveal artifacts.
+  const LANES = [
+    {bg:'#2a2a2a', obj:'#5a5a5a', label:'dark grey on darker  — overshoot shows brightest here'},
+    {bg:'#565656', obj:'#8e8e8e', label:'mid grey on mid grey — the hardest transition'},
+    {bg:'#8e8e8e', obj:'#c8c8c8', label:'light grey on light grey'},
+    {bg:'#000000', obj:'#ffffff', label:'white on black — high contrast reference'},
+  ];
+
+  const stage = document.getElementById('stage');
+  const h = (100 / LANES.length);
+  LANES.forEach((l, i) => {
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.style.cssText = `--h:${h}%;height:${h}%;top:${i*h}%`;
+    lane.innerHTML =
+      `<div class="bg" style="background:${l.bg}"></div>` +
+      `<div class="label">${l.label}</div>` +
+      `<div class="obj" style="background:${l.obj}"></div>`;
+    stage.appendChild(lane);
+  });
+
+  const objs = [...document.querySelectorAll('.obj')];
+  const spd = document.getElementById('spd'), spdv = document.getElementById('spdv');
+  let period = 6000, paused = false, t0 = null, elapsed = 0;
+
+  spd.addEventListener('input', () => {
+    spdv.textContent = spd.value;
+    period = spd.value * 1000;
+  });
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); paused = !paused; t0 = null; }
+  });
+
+  function frame(ts) {
+    if (!paused) {
+      if (t0 === null) t0 = ts - elapsed;
+      elapsed = ts - t0;
+      const span = stage.clientWidth - 170;
+      // triangle wave: sweep right, sweep left — reversal lets you see both edges
+      const p = (elapsed % period) / period;
+      const x = (p < 0.5 ? p * 2 : (1 - p) * 2) * span;
+      for (const o of objs) o.style.transform = `translateX(${x}px)`;
+    } else if (t0 !== null) { t0 = null; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
