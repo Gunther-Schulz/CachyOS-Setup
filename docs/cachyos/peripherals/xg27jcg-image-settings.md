@@ -65,6 +65,7 @@ Verified against the monitor over DDC unless marked otherwise.
 |---|---|---|---|
 | Gaming | GameVisual | **Racing** | 2.35 dE out-of-box; calibration only reaches 0.34 dE — invisible gain |
 | Gaming | Shadow Boost | Off | gaming aid; moves dark-tone gamma off reference |
+| Gaming | **Variable OD** | **8** / 20 | Tom's review setting — see below |
 | Image | Brightness | **30** | ambient-dependent, see below |
 | Image | Contrast | **80** | where the ~1,300:1 measurements were taken |
 | Image | Dynamic Dimming | Off | 10 edge-lit zones pump visibly on static content |
@@ -89,6 +90,27 @@ Contrast, Shadow Boost, Colour and Dynamic Dimming, and Racing is the more accur
 **Brightness** is a room variable, not a calibration target. SDR max is 354 nits, so 30 ≈
 105 nits — a dark-room value. Target: a white page looks like paper, not a lamp.
 
+## Variable OD (overdrive) — 8 of 20
+
+Overdrive drives the crystals harder to switch faster. Too low → smearing; too high →
+**overshoot**, a bright halo trailing moving objects, which looks worse than the smear it
+was meant to fix. 8/20 is what Tom's used to measure ("so it wasn't working aggressively"),
+calling the result "a superb overdrive".
+
+Conservative is right here for two reasons: the panel already draws a full white field in
+3–4 ms, and at 330 Hz a frame is ~3 ms — little blur is left for overdrive to remove. And
+with **no VRR on the laptop** (NVIDIA `vrr_capable=0`, see the VRR doc) the refresh rate is
+fixed, so there's no moving target for the "Variable" part to chase; one moderate setting
+holds.
+
+Verify per-unit on [TestUFO ghosting](https://testufo.com/ghosting): dark smear behind the
+object → raise; bright halo/light outline → lower; clean edges → correct.
+
+**Not the same as ELMB.** Overdrive changes pixel transition speed; ELMB strobes the
+backlight. ELMB2 needs VRR off *and* >120 Hz — both true on the laptop, so it's available
+for max motion clarity, at the cost of brightness plus Blue Light Filter, ASCR, Aspect
+Control and Dynamic Dimming (manual §3.1.2).
+
 ## Restore after All Reset
 
 DDC-settable subset (OSD-only otherwise):
@@ -101,8 +123,8 @@ ddcutil --bus 5 setvcp 8a 50      # saturation
 ddcutil --bus 5 setvcp 72 0x78    # gamma 2.2  (0x64 = 2.0)
 ```
 
-**Not DDC-settable** — set by hand in the OSD: Display Color Space, GameVisual, Dynamic
-Dimming, ASCR, VividPixel, Blue Light Filter, Shadow Boost.
+**Not DDC-settable** — set by hand in the OSD: Display Color Space, GameVisual, Variable OD,
+Dynamic Dimming, ASCR, VividPixel, Blue Light Filter, Shadow Boost.
 
 Save the finished state to **MyFavorite → Customized Setting 1** so a stray All Reset
 doesn't cost the lot.
@@ -129,7 +151,9 @@ Two documented causes before suspecting a fault:
   the [Lagom contrast test](https://www.lagom.nl/lcd-test/contrast.php) — top two and bottom
   two blocks should stay distinct.
 - Applied state below the DDC-readable subset (GameVisual, Display Color Space, ASCR,
-  VividPixel, Blue Light Filter) is **unverified** — DDC exposes no codes for them.
+  VividPixel, Blue Light Filter, Variable OD) is **unverified** — DDC exposes no codes for
+  them. Variable OD in particular is a recommendation, not a reading — confirm the current
+  value in the OSD.
 
 ---
 
