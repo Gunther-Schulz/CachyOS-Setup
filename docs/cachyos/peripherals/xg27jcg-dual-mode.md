@@ -1,6 +1,6 @@
 # ASUS XG27JCG Dual-Mode (5K/2K)
 
-**Machine:** Both (shared monitor — used on the laptop while the desktop is down).
+**Machine:** Both (shared monitor; currently attached to the desktop).
 
 5K (5120×2880 @180Hz) ↔ 2K (2560×1440 @330Hz) "Frame Rate Boost". Bus 5.
 
