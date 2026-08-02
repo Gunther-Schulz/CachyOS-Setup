@@ -32,14 +32,14 @@ For better **1% lows**, set the frame limiter method to **early** in MangoJuice 
 
 ## Launch options (Proton)
 
-Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set in Steam → game **Properties → Launch Options**. **The two machines need different strings** — `VKD3D_CONFIG=descriptor_heap` is safe *only* on Blackwell + the 595 driver (see the table):
+Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set in Steam → game **Properties → Launch Options**. **The two machines need different strings** — `VKD3D_CONFIG=descriptor_heap` is Blackwell-only, kept on despite an untested driver bump (see the table):
 
 **Laptop (FA607PV — RTX 4060 Ada, nvidia-open 610):**
 ```
 SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 mangohud %command%
 ```
 
-**Desktop (RTX 5090 Blackwell, 595 driver, 2560×1440 @ 330 Hz):**
+**Desktop (RTX 5090 Blackwell, nvidia 610.43.03, 2560×1440 @ 330 Hz):**
 ```
 SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 VKD3D_CONFIG=descriptor_heap PROTON_ENABLE_WAYLAND=1 ddc-mode-switcher mangohud %command%
 ```
@@ -49,7 +49,7 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 VKD3D_CONFIG=descriptor_heap PROTON_ENABLE_WAY
 | `SteamDeck=1` | **Skips the NetEase launcher** → boots straight into the game (the reason to use it). camelCase — `SteamDeck`, not `Steamdeck`. *Caveat:* can block first-time login — if login fails, remove it for one launch, then re-add. Some games apply Deck graphics defaults when they see this, but **no reports of that for Marvel Rivals** — here it's just the launcher skip. |
 | `DXVK_NVAPI_VKREFLEX=1` | **Makes NVIDIA Reflex actually function** (NVIDIA-only) — and you must **also turn Reflex on in-game**; the two are required together. Without this, dxvk-nvapi's Vulkan Reflex layer stays *disabled by default* and the game's Reflex calls get **fake-success stubs**: the in-game toggle *looks* active but reduces **zero** latency. The old cachy spelling `PROTON_VKREFLEX=1` was removed — this upstream name is the current one. |
 | `PROTON_ENABLE_WAYLAND=1` | Native Wayland present path — a frametime win, leaner than XWayland (see note below). **Downside:** breaks the Steam overlay (uninteractable) — disable it for in-game purchases. If you get NVIDIA sync/present glitches, this is the first flag to drop. |
-| `VKD3D_CONFIG=descriptor_heap` | **Desktop ONLY (Blackwell + 595 driver).** Enables the experimental `VK_EXT_descriptor_heap` path, which on the 595 driver *fixes* the **Xid 109 "CTX SWITCH TIMEOUT"** hard crash and trims the Blackwell freeze frequency. ⚠️ **Don't use on the laptop (Ada 4060)** — it was strongly implicated in Xid 109 GPU hangs + graphics corruption on the old **580** driver (2026-07-07: appeared while set, stopped when removed — *correlation, not proof*). The laptop is now on **nvidia-open 610**, where the interaction is untested, so keep it off by default; its benefit was marginal/illusory anyway. `PROTON_VKD3D_HEAP=1` is the removed old spelling. |
+| `VKD3D_CONFIG=descriptor_heap` | **Desktop ONLY (Blackwell).** Enables the experimental `VK_EXT_descriptor_heap` path — on driver 595 this *fixed* the **Xid 109 "CTX SWITCH TIMEOUT"** hard crash and trimmed the Blackwell freeze frequency. The desktop has since moved to **610.43.03**, where the flag causes a confirmed *regression* on other cards (Xid 31 device-lost crashes, [vkd3d-proton#3077](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077)) — but NVIDIA scoped that specific bug to **pre-Blackwell GPUs** ([2026-06-13](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077#issuecomment-3068349908)), and no RTX 5090 report of it exists in that thread. Whether the *original* Xid 109 fix is even still needed on 610 (vs. fixed natively) is **unverified** — no report either way found as of 2026-08-02. Net: kept on for now (2026-08-02, unverified on 610) — watch for Xid 31 in `dmesg`, drop it if seen. ⚠️ **Don't use on the laptop (Ada 4060)** — it was strongly implicated in Xid 109 GPU hangs + graphics corruption on the old **580** driver (2026-07-07: appeared while set, stopped when removed — *correlation, not proof*). The laptop is now on **nvidia-open 610**, where the interaction is untested, so keep it off by default; its benefit was marginal/illusory anyway. `PROTON_VKD3D_HEAP=1` is the removed old spelling. |
 | `ddc-mode-switcher` | **Desktop only.** Switches the shared XG27JCG monitor to 2K/330Hz for the match, restores 5K on exit — see [dual-mode](../../peripherals/xg27jcg-dual-mode.md). Goes before `mangohud` in the launch string. |
 | `mangohud` | FPS/frametime overlay + frame limiter (see above). Optionally prefix `gamemoderun` to pin the CPU governor to performance for the session. |
 
