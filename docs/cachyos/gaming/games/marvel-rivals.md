@@ -32,7 +32,7 @@ For better **1% lows**, set the frame limiter method to **early** in MangoJuice 
 
 ## Launch options (Proton)
 
-Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set in Steam → game **Properties → Launch Options**. **The two machines need different strings** — `VKD3D_CONFIG=descriptor_heap` is Blackwell-only, kept on despite an untested driver bump (see the table):
+Both machines run Marvel Rivals (UE5) under **proton-cachyos** (assume the latest) — set in Steam → game **Properties → Launch Options**. The strings differ only by `ddc-mode-switcher` (desktop's monitor switch):
 
 **Laptop (FA607PV — RTX 4060 Ada, nvidia-open 610):**
 ```
@@ -41,7 +41,7 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 mangohud %command%
 
 **Desktop (RTX 5090 Blackwell, nvidia 610.43.03, 2560×1440 @ 330 Hz):**
 ```
-SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 VKD3D_CONFIG=descriptor_heap PROTON_ENABLE_WAYLAND=1 ddc-mode-switcher mangohud %command%
+SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 PROTON_ENABLE_WAYLAND=1 ddc-mode-switcher mangohud %command%
 ```
 
 | Switch | What it does |
@@ -49,8 +49,35 @@ SteamDeck=1 DXVK_NVAPI_VKREFLEX=1 VKD3D_CONFIG=descriptor_heap PROTON_ENABLE_WAY
 | `SteamDeck=1` | **Skips the NetEase launcher** → boots straight into the game (the reason to use it). camelCase — `SteamDeck`, not `Steamdeck`. *Caveat:* can block first-time login — if login fails, remove it for one launch, then re-add. Some games apply Deck graphics defaults when they see this, but **no reports of that for Marvel Rivals** — here it's just the launcher skip. |
 | `DXVK_NVAPI_VKREFLEX=1` | **Makes NVIDIA Reflex actually function** (NVIDIA-only) — and you must **also turn Reflex on in-game**; the two are required together. Without this, dxvk-nvapi's Vulkan Reflex layer stays *disabled by default* and the game's Reflex calls get **fake-success stubs**: the in-game toggle *looks* active but reduces **zero** latency. The old cachy spelling `PROTON_VKREFLEX=1` was removed — this upstream name is the current one. |
 | `PROTON_ENABLE_WAYLAND=1` | Native Wayland present path — a frametime win, leaner than XWayland (see note below). **Downside:** breaks the Steam overlay (uninteractable) — disable it for in-game purchases. If you get NVIDIA sync/present glitches, this is the first flag to drop. |
-| `VKD3D_CONFIG=descriptor_heap` | **Desktop ONLY (Blackwell).** Enables the experimental `VK_EXT_descriptor_heap` path — on driver 595 this *fixed* the **Xid 109 "CTX SWITCH TIMEOUT"** hard crash and trimmed the Blackwell freeze frequency. The desktop has since moved to **610.43.03**, where the flag causes a confirmed *regression* on other cards (Xid 31 device-lost crashes, [vkd3d-proton#3077](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077)) — but NVIDIA scoped that specific bug to **pre-Blackwell GPUs** ([2026-06-13](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077#issuecomment-3068349908)), and no RTX 5090 report of it exists in that thread. Whether the *original* Xid 109 fix is even still needed on 610 (vs. fixed natively) is **unverified** — no report either way found as of 2026-08-02. Net: kept on for now (2026-08-02, unverified on 610) — watch for Xid 31 in `dmesg`, drop it if seen. ⚠️ **Don't use on the laptop (Ada 4060)** — it was strongly implicated in Xid 109 GPU hangs + graphics corruption on the old **580** driver (2026-07-07: appeared while set, stopped when removed — *correlation, not proof*). The laptop is now on **nvidia-open 610**, where the interaction is untested, so keep it off by default; its benefit was marginal/illusory anyway. `PROTON_VKD3D_HEAP=1` is the removed old spelling. |
 | `ddc-mode-switcher` | **Desktop only.** Switches the shared XG27JCG monitor to 2K/330Hz for the match, restores 5K on exit — see [dual-mode](../../peripherals/xg27jcg-dual-mode.md). Goes before `mangohud` in the launch string. |
+
+⚠️ **Never set `VKD3D_CONFIG=descriptor_heap` — on either machine.** It enables the
+prototype `VK_EXT_descriptor_heap` path, which **hard-hangs the GPU on driver 610**:
+Xid 109 `CTX SWITCH TIMEOUT` (the freeze) followed seconds later by Xid 31 MMU fault.
+Measured on the desktop 2026-08-03 — **5 launches with the flag, 5 hangs, each within
+25–60 s; removed it and the game ran clean** (zero Xid). It *was* the right flag on
+driver **595**, where it fixed exactly this Xid 109 — that stale 595-era reason is the
+trap; it does not survive the bump to 610.
+
+Why it can't come back on a driver bump alone: NVIDIA scoped its FAULT_PDE fix to
+**pre-Blackwell GPUs only** and called Blackwell a separate, still-open investigation
+([rlocatti-nv, 2026-06-13](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077#issuecomment-3068349908));
+the fix landed on the **595.8x** branch, and 610.43.03 was confirmed still broken on
+release day ([#3077](https://github.com/HansKristian-Work/vkd3d-proton/issues/3077)).
+Blackwell + `descriptor_heap` + Xid 109 on 610 is independently reported on RTX 5080/5090
+([open-gpu-kernel-modules#1097](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/1097)),
+where the flag only *delayed* the hang. The flag is undocumented in vkd3d-proton's
+`VKD3D_CONFIG` list — a prototype opt-in, never stabilized. It is live under
+proton-cachyos regardless of the system `vkd3d-proton` package version (the bundled
+`files/lib/wine/vkd3d-proton/…/d3d12core.dll` carries `VK_EXT_descriptor_heap`) — so
+checking the distro package tells you nothing about whether it's engaged.
+`PROTON_VKD3D_HEAP=1` is the removed old spelling; it is the same trap.
+
+**Diagnosing a freeze:** the game logs nothing useful (UE5 writes a compressed blob) —
+the GPU fault only lands in the kernel ring buffer. Use
+[`tools/gpu-hang-watch.sh`](../../../../tools/gpu-hang-watch.sh) (`--boot`, or bare to
+follow live). Don't reach for `dmesg`: it needs root here, and unprivileged it returns
+near-nothing, so a grep over it reports "no faults" whether or not there were any.
 | `mangohud` | FPS/frametime overlay + frame limiter (see above). Optionally prefix `gamemoderun` to pin the CPU governor to performance for the session. |
 
 **NTSync is automatic — don't set it.** `ntsync` is default-on in current proton-cachyos and the `PROTON_USE_NTSYNC` flag was removed (dead no-op). `PROTON_NO_NTSYNC=1` disables it only if a title misbehaves.
@@ -71,7 +98,7 @@ Honest caveat: the descriptor_heap → Xid 109 → cache-corruption chain fits t
 
 **`PROTON_ENABLE_WAYLAND` — on (both machines).** Native Wayland's present path is leaner than XWayland (no extra copy), amplified on the laptop by the GNOME compositor now running on the *same* dGPU as the game ([why](../../laptop/amdgpu-gfx-ring-timeout.md)). On the desktop the Blackwell freeze (below) is unaffected either way — it's on there for the same present-path win. Judge frametime over *several* matches on a warm shader cache — single-match comparisons are dominated by shader-compile stutter and scene variance, not the flag. **Known downside:** with it on, the **Steam overlay becomes uninteractable** — you can't even click in it. Toggle trick: break the name (e.g. `_ROTON_ENABLE_WAYLAND=1`) to disable it without deleting the line — do this whenever you need the overlay (e.g. in-game purchases — see below).
 
-**Desktop 3–5 s freezes** (RTX 5090) are an open NVIDIA **Blackwell driver bug**, not a config issue — reported across 570/575/590 drivers and every compositor. It lives at the **session + driver** level, so the game's Proton backend doesn't move it: running under XWayland instead of `PROTON_ENABLE_WAYLAND` **did not help**, and `VKD3D_CONFIG=descriptor_heap` only **reduces the frequency — not a cure**. Highest-value mitigation: **toggle VRR/G-SYNC off** (it's a presentation-path bug). Track [NVIDIA open-gpu-kernel-modules #880](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880).
+**Desktop 3–5 s freezes** (RTX 5090) are an open NVIDIA **Blackwell driver bug**, not a config issue — reported across 570/575/590 drivers and every compositor. It lives at the **session + driver** level, so the game's Proton backend doesn't move it: running under XWayland instead of `PROTON_ENABLE_WAYLAND` **did not help**. Highest-value mitigation: **toggle VRR/G-SYNC off** (it's a presentation-path bug). `VKD3D_CONFIG=descriptor_heap` used to be listed here as a frequency-reducer — **it is not an option**: on 610 it causes hard Xid 109 hangs (above). Don't trade a 3–5 s stutter for a crash. Track [NVIDIA open-gpu-kernel-modules #880](https://github.com/NVIDIA/open-gpu-kernel-modules/issues/880).
 
 **Shader-compile stutter — and why it recurs after every driver/Proton update.** First-launch stutter is normal UE5 and smooths as the cache warms. But it *comes back* mid-match — often on a first-seen effect like an ult — after any **NVIDIA driver or proton-cachyos update**, because both invalidate the shader cache: on Linux the pipeline is built in two stages (vkd3d-proton does D3D12→SPIR-V, then the NVIDIA driver compiles SPIR-V→GPU code), and a change in *either* stage misses the cache. Familiar shaders then recompile on-demand, in-match. So you must watch **both** the driver and Proton, not just the driver.
 
