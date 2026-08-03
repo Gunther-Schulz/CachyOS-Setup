@@ -49,6 +49,7 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | MangoJuice / ReShade | `yay -S mangojuice`; `yay -S reshade-steam-proton-git` | `gaming/games/marvel-rivals.md`, `gaming/reshade.md` | universal |
 | ddc-mode-switcher | AUR `ddc-mode-switcher` | `peripherals/xg27jcg-dual-mode.md` | universal |
 | MangoHud | `sudo pacman -S mangohud lib32-mangohud` | `workarounds/mangohud-asus-ec-sensors.md` | desktop |
+| rasdaemon | **AUR only** (`paru -S rasdaemon`, 0.8.4-2) — persistent MCE/EDAC ledger; read the PKGBUILD first, the stable pkg is flagged out-of-date. Installed desktop 2026-08-03 | `todo.md` (surge check) | desktop |
 | NVIDIA open modules | `sudo pacman -S nvidia-open-dkms nvidia-utils lib32-nvidia-utils opencl-nvidia lib32-opencl-nvidia` (removes `*-580xx-*`); rollback with the `nvidia-580xx-*` set | `nvidia/open-kernel-modules.md` | laptop (desktop 5090 is open-only by hw) |
 
 ## 2. Files written under /etc
@@ -78,7 +79,8 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | `/etc/sysctl.d/99-split-lock.conf` | `kernel.split_lock_mitigate=0` | `gaming/games/marvel-rivals.md` | universal (gaming) |
 | `/etc/sysctl.d/99-memory-freeze-mitigation.conf` | `vm.watermark_scale_factor=100` / `vm.min_free_kbytes=131072` / `vm.swappiness=10` (single home — no separate `99-swappiness.conf`) | `system/memory-tuning.md` | universal |
 | `/etc/sysctl.d/` (name TBD) | `vm.max_map_count=262144` | `system/vm-max-map-count.md` | universal |
-| `/etc/systemd/system/user@1000.service.d/override.conf` | `ManagedOOMMemoryPressure=kill` / `Limit=20%` / `DurationSec=3` (via `systemctl edit user@1000.service`) | `system/memory-tuning.md` | universal (UID 1000) |
+| ~~`/etc/systemd/system/user@1000.service.d/override.conf`~~ | ~~`ManagedOOMMemoryPressure=kill` / `Limit=20%` / `DurationSec=3`~~ — **removed on desktop 2026-08-03**, it was what socket-activated `systemd-oomd` and handed the user session to it instead of earlyoom. Don't re-add. | `system/memory-tuning.md` (deleted) | historical |
+| `/etc/systemd/journald.conf.d/90-retention.conf` | `[Journal]` / `SystemMaxUse=2G` / `MaxRetentionSec=1month`; then `sudo systemctl restart systemd-journald`. **Why:** journald ran pure defaults and was discarding logs within ~a day (45 MB total; oldest entry newer than the current boot). That silently defeats every "check the journal weekly for MCEs" and every post-freeze `journalctl -b -1`. Applied desktop 2026-08-03 | `todo.md` (surge check, parked freeze) | universal — apply on laptop too |
 | `/etc/systemd/zram-generator.conf.d/90-zram-size.conf` | `[zram0]` / `zram-size = 24576` / `swap-priority = 100` | `system/memory-tuning.md` | universal |
 | `/etc/fstab` | swapfile line `… none swap pri=50 0 0` (ext4, or Btrfs NoCOW `chattr +C`) | `system/memory-tuning.md` | universal |
 | `/etc/default/grub` | add `usb-storage.quirks=0bda:9210:u`; `grub-mkconfig -o /boot/grub/grub.cfg` | `hardware/usb-nvme.md` | universal (GRUB) |
@@ -110,9 +112,10 @@ amdgpu iGPU) and **desktop** (B850-G / 9950X3D / RTX 5090 / NCT6799).
 | claude-cowork (user) | `systemctl --user enable --now claude-cowork` | `apps/claude-desktop.md` | universal |
 | bt-amp-reconnect (user) | full unit at `~/.config/systemd/user/bt-amp-reconnect.service`; `systemctl --user enable` | `peripherals/bluetooth.md` | **laptop only** (SMSL amp, MAC-specific) |
 | nvidia-powerd | `sudo systemctl enable --now nvidia-powerd` | `laptop/nvidia-dynamic-boost.md` | **laptop only** (no-op desktop) |
-| earlyoom | `sudo systemctl enable --now earlyoom` — active OOM daemon; `systemd-oomd` disabled (kills desktop apps too eagerly under PSI/swap pressure). SIGTERM <10% free RAM+swap, SIGKILL <5%, `--avoid` init/systemd/Xorg/sshd. **Verified laptop; desktop unverified — see todo.md** | `apps/packages.md` | universal |
+| earlyoom | `sudo systemctl enable --now earlyoom` — active OOM daemon; `systemd-oomd` disabled (kills desktop apps too eagerly under PSI/swap pressure). SIGTERM <10% free RAM+swap, SIGKILL <5%, `--avoid` init/systemd/Xorg/sshd. **Verified both** (desktop 2026-08-03) | `apps/packages.md` | universal |
 | mem_sleep oneshot | enable+start (unit body not given verbatim) | `laptop/s3-sleep.md` | laptop |
 | coolercontrold | `sudo systemctl restart coolercontrold` (CoolerControl install itself is **undocumented**) | `hardware/motherboard-fans.md` | desktop |
+| rasdaemon | `sudo systemctl enable --now rasdaemon` — persistent MCE/EDAC ledger, read with `ras-mc-ctl --errors`. Survives reboots and journal rotation, which the `journalctl … grep mce` check does not. **Prerequisite for Curve Optimizer tuning:** corrected Cache Hierarchy errors are the early warning that a core's offset is too aggressive. Enabled desktop 2026-08-03 | `todo.md` (surge check, 9950X3D tuning) | desktop |
 
 ## 6. Autostart .desktop files (~/.config/autostart/)
 
@@ -158,3 +161,9 @@ earlyoom is the active OOM daemon here, not oomd), `vm.max_map_count` obsolete
 split-lock a CachyOS default (`/usr/lib/sysctl.d/99-splitlock.conf`). Those docs
 and the split-lock section were removed; the memory / max_map rows in the tables
 above are retained only as historical record.
+
+**Scope correction (2026-08-03):** that audit ran on the **laptop only**, but its
+findings were written up as repo-wide — the desktop did have the memory-tuning
+`user@1000` OOM override applied, so `memory-tuning.md` was deleted while still
+describing this machine correctly. A single-machine audit states its machine; it
+does not clear the other one.
