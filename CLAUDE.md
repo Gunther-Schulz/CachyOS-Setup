@@ -3,6 +3,16 @@
 Read before editing docs in this repo. (Global working rules live in
 `~/.claude/CLAUDE.md`; this file is repo-specific.)
 
+## Where things live
+
+- **Backlog:** `docs/cachyos/todo.md` — this repo's parked/ready work items (the
+  `BACKLOG.md` role). **Read it before answering any "how should I set up X"
+  question about this machine.** Items there carry their blocking evidence and
+  their already-decided design; re-deriving one from scratch wastes the session
+  and risks contradicting a decision already made.
+- **Docs:** `docs/cachyos/<area>/` — current applied state per the principle below.
+- **Scripts/configs:** `fan-control/`, `monitor-tests/`, `tools/`.
+
 ## Clean-state principle
 
 A doc describes each machine's **current applied state + why** — a setup
