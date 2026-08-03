@@ -26,7 +26,16 @@
   3. Idle soak a full day — CO fails at *idle/light load*, not just under stress. Watch `ras-mc-ctl --errors` / `journalctl -k | grep -iE "mce|machine check"`: corrected Cache Hierarchy errors = back off 5 on that core even without a crash (the Linux equivalent of WHEA 18/19 warnings).
   4. Any single failing core: relax only that core's offset (+5), re-run; then a week of normal use as final judge.
   Payoff at 105 W: ~95% multicore, ~half the load power/heat; gaming and single-thread unaffected (X3D loads run 60–90 W anyway).
-  **Before/after benchmark protocol** (run the IDENTICAL set at stock BEFORE touching anything, save results into the repo, e.g. `docs/cachyos/hardware/9950x3d-eco-baseline.md`):
+  **Before/after benchmark protocol — automated: [`tools/cpu-bench.sh`](../../tools/cpu-bench.sh).**
+  ```sh
+  sudo pacman -S stress-ng turbostat            # prerequisites
+  sudo ./tools/cpu-bench.sh stock               # BEFORE any BIOS change — unrepeatable later
+  sudo ./tools/cpu-bench.sh eco                 # after ECO alone
+  sudo ./tools/cpu-bench.sh eco-co              # after ECO + Curve Optimizer
+  ```
+  Runs the battery below 3× each and reports medians (single runs are noise), with `turbostat` logging power/clocks/temps *during* the load. Writes to `~/bench/<label>/`: raw output, turbostat logs, `summary.txt`, and **`conditions.txt`** — kernel, governor, EPP, power mode, RAM speed, loadavg. That last file is the point: `diff ~/bench/stock/conditions.txt ~/bench/eco/conditions.txt` catches a power-mode or RAM-speed change between runs, which is the failure that silently invalidates the whole comparison. Warns and pauses if loadavg > 1.5; settles 15 s between runs.
+  ⚠️ **Parsing unverified** until the first real run — the bogo-ops and PkgWatt extraction was written against expected `stress-ng`/`turbostat` output formats, not observed ones. Check the first `summary.txt` has real numbers, not `0` or `n/a`.
+  The underlying battery, if running by hand:
   - Multicore throughput: `mprime` bench mode or `stress-ng --matrix 0 --metrics-brief -t 60`; plus a real workload you care about — a kernel/large-project compile timed with `time` (best of 3, warm cache) is the honest one.
   - Single-thread: `geekbench6` (AUR) or `stress-ng --cpu 1 --cpu-method fft --metrics-brief -t 60` — expect ~0 change; this is the "did CO/ECO hurt boost" check.
   - Sustained clocks + power + temps DURING the multicore run, logged not eyeballed: `sudo turbostat --interval 5 --quiet --show PkgWatt,CoreTmp,Busy%,Bzy_MHz` teed to a file for the run's duration. The turbostat log is the real payoff evidence — perf-per-watt before vs after.

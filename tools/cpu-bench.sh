@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# cpu-bench.sh — before/after CPU benchmark for the 9950X3D ECO + Curve Optimizer work.
+#
+# Runs the battery from docs/cachyos/todo.md three times each and reports medians,
+# with turbostat logging power/clocks/temps DURING the load. Records the machine
+# conditions alongside the numbers, because a before/after comparison is only
+# valid if the conditions match — and that is the part people forget.
+#
+# Usage (needs root for turbostat's MSR access):
+#   sudo ./tools/cpu-bench.sh stock          # BEFORE any BIOS change
+#   sudo ./tools/cpu-bench.sh eco            # after ECO alone
+#   sudo ./tools/cpu-bench.sh eco-co         # after ECO + Curve Optimizer
+#
+#   sudo ./tools/cpu-bench.sh stock -n 5     # more runs (default 3)
+#   sudo ./tools/cpu-bench.sh stock -t 120   # longer runs (default 60s)
+#
+# Results land in ~/bench/<label>/ : raw stress-ng output, raw turbostat logs,
+# conditions.txt, and summary.txt. Compare two labels with:
+#   diff ~/bench/stock/conditions.txt ~/bench/eco/conditions.txt
+#
+# Requires: stress-ng turbostat  (sudo pacman -S stress-ng turbostat)
+
+set -uo pipefail
+
+RUNS=3
+SECS=60
+LABEL=""
+
+usage() { sed -n '2,25p' "$0"; exit "${1:-0}"; }
+
+[ $# -ge 1 ] || usage 1
+LABEL=$1; shift
+case "$LABEL" in -h|--help) usage 0 ;; -*) echo "first arg must be a label" >&2; usage 1 ;; esac
+
+while getopts ":n:t:h" opt; do
+  case "$opt" in
+    n) RUNS=$OPTARG ;;
+    t) SECS=$OPTARG ;;
+    h) usage 0 ;;
+    *) echo "unknown option -$OPTARG" >&2; usage 1 ;;
+  esac
+done
+
+[ "$(id -u)" -eq 0 ] || { echo "needs root (turbostat reads MSRs); re-run with sudo" >&2; exit 1; }
+for b in stress-ng turbostat; do
+  command -v $b >/dev/null || { echo "missing: $b  (sudo pacman -S stress-ng turbostat)" >&2; exit 1; }
+done
+
+home=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
+OUT="${home:-/root}/bench/$LABEL"
+mkdir -p "$OUT"
+
+# --- conditions: the comparability record -------------------------------------
+cond="$OUT/conditions.txt"
+{
+  echo "label:        $LABEL"
+  echo "date:         $(date -Is)"
+  echo "kernel:       $(uname -r)"
+  echo "cpu:          $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs)"
+  echo "threads:      $(nproc)"
+  echo "governor:     $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
+  echo "epp:          $(cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference 2>/dev/null)"
+  echo "driver:       $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null)"
+  echo "power-mode:   $(sudo -u "${SUDO_USER:-root}" powerprofilesctl get 2>/dev/null || echo n/a)"
+  echo "ram-speed:    $(dmidecode -t memory 2>/dev/null | awk '/Configured Memory Speed/{print $4" "$5; exit}')"
+  echo "ram-total:    $(free -g | awk '/^Mem:/{print $2" GiB"}')"
+  echo "runs:         $RUNS x ${SECS}s"
+  echo "loadavg-pre:  $(cut -d' ' -f1-3 /proc/loadavg)"
+} > "$cond"
+
+echo "=== conditions ==="; cat "$cond"; echo
+
+# A busy machine invalidates the numbers; say so rather than silently skewing them.
+load1=$(cut -d' ' -f1 /proc/loadavg)
+if awk "BEGIN{exit !($load1 > 1.5)}"; then
+  echo "WARNING: loadavg is $load1 — close background work or the medians will be noisy."
+  echo "Continuing in 10s (Ctrl-C to abort)..."; sleep 10
+fi
+
+# --- helpers ------------------------------------------------------------------
+# stress-ng --metrics-brief prints the stressor row; column 9 is bogo ops/s (real time).
+bogo_from() { awk -v s="$1" '$0 ~ (" "s" ") && NF>=9 {for(i=1;i<=NF;i++) if($i==s){print $(i+5); exit}}' "$2"; }
+# turbostat -S prints one summary row per interval; average a named column.
+col_avg() {
+  awk -v want="$1" 'NR==1{for(i=1;i<=NF;i++) if($i==want) c=i; next}
+                    c && $c ~ /^[0-9.]+$/ {s+=$c; n++}
+                    END{if(n) printf "%.1f", s/n; else print "n/a"}' "$2"
+}
+median() { printf '%s\n' "$@" | sort -g | awk '{a[NR]=$1} END{if(NR%2) print a[(NR+1)/2]; else printf "%.2f", (a[NR/2]+a[NR/2+1])/2}'; }
+
+run_set() {          # $1=name  $2=stressor-label  $3..=stress-ng args
+  local name=$1 stressor=$2; shift 2
+  local -a scores=() watts=()
+  echo "--- $name: $RUNS x ${SECS}s ---"
+  for i in $(seq 1 "$RUNS"); do
+    local so="$OUT/${name}-run${i}.txt" to="$OUT/${name}-run${i}-turbostat.txt"
+    turbostat --interval 5 --quiet -S --show PkgWatt,CoreTmp,Busy%,Bzy_MHz --out "$to" \
+      -- stress-ng "$@" --metrics-brief -t "$SECS" > "$so" 2>&1
+    local b w
+    b=$(bogo_from "$stressor" "$so"); w=$(col_avg PkgWatt "$to")
+    b=${b:-0}
+    scores+=("$b"); watts+=("$w")
+    printf '  run %d: %s bogo-ops/s   %s W avg\n' "$i" "$b" "$w"
+    sleep 15   # let temps settle between runs
+  done
+  local mb mw
+  mb=$(median "${scores[@]}"); mw=$(median "${watts[@]}")
+  printf '  MEDIAN: %s bogo-ops/s   %s W\n\n' "$mb" "$mw"
+  printf '%s\tmedian_bogo_ops_s=%s\tmedian_pkg_watt=%s\truns=%s\n' "$name" "$mb" "$mw" "$RUNS" >> "$OUT/summary.txt"
+}
+
+: > "$OUT/summary.txt"
+run_set multicore matrix --matrix 0
+run_set single-thread cpu --cpu 1 --cpu-method fft
+
+{ echo; echo "loadavg-post: $(cut -d' ' -f1-3 /proc/loadavg)"; } >> "$cond"
+chown -R "${SUDO_USER:-root}" "$OUT" 2>/dev/null
+
+echo "=== summary ($LABEL) ==="
+cat "$OUT/summary.txt"
+echo
+echo "Raw output + turbostat logs: $OUT"
+echo "Compare later with:  diff $OUT/conditions.txt ~/bench/<other-label>/conditions.txt"
