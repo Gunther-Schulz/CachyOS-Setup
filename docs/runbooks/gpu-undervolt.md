@@ -121,6 +121,11 @@ now verifies this per run and says so. Two caveats, both learned in use:
   runs. GravityMark's resolution is pinned by `-width`/`-height` and it runs fullscreen
   uncapped — same-resolution monitors do identical GPU work, and PASS/FAIL, Xid and
   power never depend on the monitor at all. Moving it mid-ladder is fine.
+  **Refresh rate check** (once per setup): the soak's `gravitymark.log` records FPS —
+  FPS **above** the panel's refresh proves presentation is unthrottled and the monitor's
+  Hz is irrelevant. FPS **pinned at** the refresh means vsync is throttling the render
+  loop: the GPU is coasting and the soak is not a stress test — fix that before trusting
+  any PASS from it.
 
 ### Stopping a run when the benchmark covers the terminal
 

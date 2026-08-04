@@ -277,7 +277,9 @@
   monitor the terminal is NOT on — **switching monitors is safe for the scores**: the
   soak pins the render resolution by flag and both monitors are the same resolution, so
   the GPU does identical work either way (the same-monitor rule is FurMark's
-  windowed-mode mechanism; it does not transfer). To stop mid-run without reaching the
+  windowed-mode mechanism; it does not transfer). Refresh rate is also irrelevant here,
+  measured: the soaks run 455–458 FPS on the Asus — above any panel's refresh — so
+  presentation is unthrottled and the 60 Hz Dell renders identically. To stop mid-run without reaching the
   terminal: `pkill GravityMark; sudo pkill -INT -f gpu-uv-explore` (runbook has the why;
   closing the benchmark window alone does NOT stop the sweep).
 
