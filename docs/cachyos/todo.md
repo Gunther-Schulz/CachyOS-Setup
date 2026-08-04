@@ -338,6 +338,60 @@
   turnover point, the chosen offset beats stock on `ollama` eval rate, and
   `memtest_vulkan` is clean.
 
+  **READY — `tools/gpu-compute-bench.sh`: the capped regime has no real-workload
+  measurement.** The +3.9 % capped payout rests entirely on **FurMark**, a synthetic power
+  virus standing in for the work this machine actually does. That substitution has been
+  wrong three times in this project already (FurMark for games, `gpu_burn` for gaming
+  clocks, Superposition for GravityMark). The real workloads are installed; measure them.
+
+  **The two workloads split across the two levers — which is why they need separate
+  measurements, and why the memory project stays separate:**
+
+  | workload | bottleneck | expected power | lever that helps |
+  |---|---|---|---|
+  | Wan2GP / Forge Classic (neo) — video + SDXL | compute (DiT/UNet forward) | pins 575 W | **the undervolt** |
+  | LLM **prompt processing** (`pp`) | compute (large matmuls) | pins 575 W | **the undervolt** |
+  | LLM **token generation** (`tg`) | **memory bandwidth** | well under the cap | **memory offset** |
+
+  ⚠️ **That table is mechanism, not measurement on this box.** The first thing the tool
+  produces is the **regime check** — log `clocks.sm,power.draw` during one real generation
+  and confirm it pins 575 W. If it does not, the reasoning above is wrong.
+
+  **Diffusion half — drive ComfyUI in its own venv (operator decision 2026-08-05).**
+  Objected to it first as a proxy for Forge; the objection was weak and is withdrawn — it
+  is the *same computation with a different wrapper* (same UNet, same CUDA kernels, same
+  PyTorch), unlike FurMark-for-a-game which was a different computation. Deciding factor
+  is reproducibility: a manual Forge run varies prompt, steps, sampler, resolution and VRAM
+  state between measurements, and the effect being chased is ~4 %, which manual variance
+  buries. The API (`POST /prompt` + history timings) makes interleaving a loop instead of a
+  person with a stopwatch, and ComfyUI runs **Wan** too, so one harness covers both.
+  ⚠️ **Pin the config to match Forge Classic neo** — same checkpoint, same attention
+  backend (`sdpa`/`xformers`/`flash-attn`) and precision, fixed seed/steps/sampler/
+  scheduler/resolution. Different backends change the kernel mix, which is the one way this
+  *would* become a proxy after all. Discard run 1 (model load + autotune); measure 2..N.
+
+  **LLM half — `llama-bench`, not `ollama`.** ollama blends prompt processing and token
+  generation into one rate, so it cannot separate the two levers above — the whole point.
+  It also auto-picks context/batch/layers and adds model-load churn, which is variance we
+  would be fighting. `llama-bench` reports `pp` and `tg` separately with N repetitions and
+  stddev, pins every parameter, has no sampling variance, and emits CSV/JSON.
+  `extra/llama-cpp` provides it. **No re-download needed — ollama's blobs are plain GGUF**
+  (verified 2026-08-05, magic `GGUF`), so point `-m` straight at one:
+
+  ```fish
+  # qwen3:14b, 9.3 GB — matches the actual coding use, big enough that tg is bandwidth-bound
+  set m ~/.ollama/models/blobs/sha256-a8cc1361f3145dc01f6d77c6c82c9116b9ffe3c97b34716fe20418455876c40e
+  llama-bench -m $m -p 512 -n 128 -r 5
+  ```
+
+  Resolve any model's blob from `~/.ollama/models/manifests/…` — the layer with mediaType
+  `application/vnd.ollama.image.model`. 9 models present; `gemma4:26b` (18 GB) is the
+  heavier second point.
+
+  *Done when:* the regime check confirms (or refutes) that generation pins 575 W; and
+  stock-vs-setting is interleaved per `gpu-ab-compare.sh` discipline, verdict on delivered
+  throughput with a confidence interval — never on reported clock.
+
   **Tooling — READY, both surfaced 2026-08-04 while repairing a resume by hand:**
 
   - **`gpu-uv-explore.sh` needs a `--state <file>` flag.** `--resume` takes the newest
