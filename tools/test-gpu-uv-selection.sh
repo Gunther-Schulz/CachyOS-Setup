@@ -229,6 +229,35 @@ if grep -q 'NVCURVE" write --reset' "$HERE/gpu-flatten.sh" &&    awk '/RESET FIR
 else printf '  ❌ %-34s
 ' "gpu-flatten.sh does NOT reset first"; FAIL=$((FAIL+1)); fi
 
+
+# ── lint: `local a=$1 b="...$a..."` ─────────────────────────────────────────────────
+# Bash expands every word of a command BEFORE the builtin runs, so a later word on the
+# same `local` line that references an earlier assignment reads the OLD value. Under
+# `set -u` that aborts the script; without it, it silently uses whatever a GLOBAL of the
+# same name happens to hold. Both happened here on 2026-08-04 — gpu-capped-probe.sh died
+# on its first run, and gpu-ab-compare.sh had the identical construct and worked only
+# because the name it referenced was also a global. The one that "worked" is the worse
+# case: it produced correct output by coincidence.
+echo
+echo "=== lint: multi-assignment local referencing its own earlier name ==="
+lint_hits=0
+for f in "$HERE"/*.sh; do
+  while IFS=: read -r ln text; do
+    [ -n "$ln" ] || continue
+    case "$(echo "$text" | sed 's/^[[:space:]]*//')" in \#*) continue ;; esac
+    names=$(echo "$text" | grep -oE '\blocal[[:space:]]+.*' | grep -oE '\b[a-z_][a-z_0-9]*=' | tr -d '=')
+    for n in $names; do
+      rest=${text#*"$n="}
+      if echo "$rest" | grep -qE '\$\{?'"$n"'\b'; then
+        printf '  ❌ %s:%s references $%s on its own local line\n' "$(basename "$f")" "$ln" "$n"
+        lint_hits=$((lint_hits+1))
+      fi
+    done
+  done < <(grep -nE '^[[:space:]]*local[[:space:]]+[a-z_]+=.*[a-z_]+=' "$f" 2>/dev/null)
+done
+if [ "$lint_hits" -eq 0 ]; then printf '  ✅ %-34s\n' "no self-referencing local lines"; PASS=$((PASS+1))
+else FAIL=$((FAIL+lint_hits)); fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi

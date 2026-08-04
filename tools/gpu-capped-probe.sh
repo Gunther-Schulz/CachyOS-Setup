@@ -80,7 +80,14 @@ fi
 
 # One FurMark run plus a sensor trace. Returns via files; prints nothing itself.
 probe() {   # $1 = label
-  local lbl=$1 out="$OUT/$lbl.furmark.txt" sens="$OUT/$lbl.sensors.txt"
+  # SEPARATE STATEMENTS, NOT `local a=$1 b="...$a..."`. Bash expands every word of a
+  # command BEFORE the builtin runs, so a later word referencing an earlier assignment on
+  # the same `local` line sees the OLD value — unset here, which under `set -u` aborts the
+  # script. gpu-ab-compare.sh has the identical construct and survived only because the
+  # name it referenced happened to also exist as a global.
+  local lbl=$1
+  local out="$OUT/$lbl.furmark.txt"
+  local sens="$OUT/$lbl.sensors.txt"
   local t0; t0=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
   ( for i in $(seq 1 $(( SECS / 3 + 6 )) ); do
       nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits \

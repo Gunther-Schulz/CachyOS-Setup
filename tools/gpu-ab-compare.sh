@@ -97,7 +97,13 @@ GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen 1 -screen "$SCREEN"
 # One pass. $1 = arm (A=stock, B=setting), $2 = index. Appends "arm idx score temp0 W MHz".
 N=0
 one_pass() {
-  local arm=$1 idx=$2 plog="$OUT/pass-$(printf '%02d' "$idx")-$1.log"
+  # Separate statements — see the note in gpu-capped-probe.sh. This line worked only
+  # because `idx` is also a global in this script; referencing a local from the same
+  # `local` statement reads the outer value, not the one being assigned.
+  local arm=$1
+  local idx=$2
+  local plog
+  plog="$OUT/pass-$(printf '%02d' "$idx")-$arm.log"
   if [ "$arm" = A ]; then "$NVCURVE" write --reset >/dev/null 2>&1
   else "$FLATTEN" --mv "$MV" --mhz "$MHZ" >/dev/null 2>&1 || { say "  flatten FAILED — aborting"; exit 1; }
   fi
