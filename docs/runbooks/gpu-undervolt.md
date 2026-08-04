@@ -201,14 +201,69 @@ sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000     # apply the chosen pair
 sudo ./tools/gpu-flatten.sh --reset                  # back to stock
 ```
 
+### Persistence — `nvcurve` ships it; do not hand-roll a systemd unit
+
+`nvcurve profile` saves the setting and `nvcurve service install` registers the daemon
+that re-applies auto-load profiles at boot.
+
+⚠️ **Pick ONE write path before enabling any of it.** `nvcurve` writes the curve through
+NvAPI; anything NVML-based — `nvidia-settings`, LACT, `nvmlDeviceSetGpcClkVfOffset` —
+writes the same hardware state, and the two silently overwrite each other
+([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)). Two daemons fighting
+over the curve is an intermittent, unattributable failure; audit what is installed and
+enabled first.
+
+⚠️ **Verify persistence by reading the curve back after a reboot**, not by trusting
+`service status`. No third-party report of nvcurve persistence surviving a reboot on a
+5090 exists — the capability is the author's claim, untested by anyone else.
+
 Before trusting it daily:
 
 1. **12-pass soak** — `sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
    (stability only — 12 passes of one scene is not evidence about performance)
-2. **~1 h of a real game.** One fixed benchmark scene is one shader mix, not a workload.
+2. **Correctness, not just survival — two checks nothing else covers, ~3 min each, run
+   once against the winner:**
+   ```fish
+   gpu_burn 180        # silent COMPUTE corruption — expect zero errors
+   memtest_vulkan      # silent VRAM corruption
+   ```
+   A soak and a game both tell you the card did not *die*. Neither tells you it computed
+   the right answer. That gap only matters for some users — and it matters most for
+   exactly the workloads that never crash: inference, image generation, anything whose
+   output you cannot eyeball for correctness. A wrong token has no symptom.
+   ⚠️ `gpu_burn` passing is still **weak evidence about stability** (it runs power-capped,
+   at clocks far below where an undervolt breaks). It is promoted here for *corruption*
+   only — a different question, and one it genuinely answers.
+3. **~1 h of a real game.** One fixed benchmark scene is one shader mix, not a workload.
    Check `journalctl -b | grep -i xid` afterwards — **and pick the title by the two rules
-   below.**
-3. Only then make it persistent (nvcurve profile → systemd unit).
+   below.** Log frametimes (MangoHud) rather than only watching for a crash: repeated
+   loops expose *frametime drift* that a pass/fail check never sees.
+   ⚠️ **One title is not enough, and this is documented rather than theoretical.** A 5090
+   owner ran `0.9 V @ 2902 MHz` stable in every game he tried **except Snowrunner**, which
+   crashed to desktop at that exact setting and forced a drop to 2782 MHz for that title
+   alone. Different engines stress different parts of the pipeline; a per-title failure is
+   a normal outcome, not evidence the whole setting is bad.
+4. Only then make it persistent (see below — do not hand-roll a unit).
+
+### ⚠️ Re-validate after every driver update
+
+A validated curve can silently regress on a driver bump. Driver **595.71** added an
+undocumented voltage cap on some RTX 40/50 cards — silicon-lottery-dependent, and
+triggering **only above a +150 MHz core offset**, so small offsets saw nothing. One 5090
+lost ~65 mV / ~170 MHz of headroom with no announcement; fixed in 595.76.
+Treat a driver upgrade as invalidating the measurement, not the setting: re-run the A/B,
+because the failure mode is *quietly worse numbers*, not a crash.
+
+### Which knobs risk frametime problems
+
+Not all of these levers behave alike, and the one people reach for first is the worst:
+
+| lever | frametime effect |
+|---|---|
+| **V/F flatten** (this runbook) | **lowest risk — often improves consistency.** A voltage ceiling makes the card hold a steady clock instead of boosting opportunistically and drooping as it heats. Its failure mode is a *crash*, not stutter. |
+| **Power-limit cap** (`nvidia-smi -pl`) | **the classic offender.** The card boosts, hits the cap, drops clock, recovers, repeats — clock oscillates at the ceiling and frametimes follow. Capping *clock* is smooth; capping *power* is spiky. This is why the flatten is preferred and the power limit is left alone. |
+| **Memory offset** | **real risk, and sneaky.** Marginal memory does not fail cleanly — the link retries failed transfers, and retries are bursty and access-pattern dependent, so it presents as **micro-stutter** rather than a uniform slowdown. Judge memory with frametime logging, never with an average. |
+| **Fan curve** | none (acoustic only) |
 
 ### Choosing the validation load — two rules, both learned by getting them wrong
 

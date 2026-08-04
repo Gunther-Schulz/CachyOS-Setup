@@ -277,9 +277,28 @@
   On resume it will ask about the unfinished `950mV/3100` rung — **answer `y`, it did crash
   the machine.**
 
-  **READY — memory offset, never tested, and it is the untouched half.** The whole ladder
-  tunes the **core** V/F curve; memory has been left at stock throughout. For LLM inference
-  this is likely the larger lever, since token generation is memory-bandwidth-bound.
+  **PARKED until the undervolt is finished AND persistent — memory offset (operator
+  decision, 2026-08-05).** Not blocked on evidence; blocked on **sequence**. The whole
+  ladder tunes the **core** V/F curve and memory has been left at stock throughout, so this
+  is the untouched half — but it is a *different project wearing similar clothes*, and
+  interleaving it costs more than waiting does:
+
+  - **It pulls the opposite direction.** The undervolt is *less power for the same work*.
+    A memory OC is *more power for more work* (+20–30 W, igorslab). Sharing a session with
+    the efficiency work invites judging one by the other's criteria.
+  - **It adds a second knob to a system just characterised on one.** Every measurement
+    afterwards carries two variables instead of one.
+  - **Its failure mode is silent** (retry turnover, below), so it needs its own instrument
+    and its own attention rather than a slot at the end of a long sweep.
+
+  **Worth doing when its turn comes, and only because of the inference workload:**
+  token generation is bandwidth-bound, so ~+15 % bandwidth ≈ ~+15 % tokens/s — a large,
+  direct gain. **For gaming it is worth ~2–4 %**, which is why the FE guide and most
+  undervolt write-ups skip memory entirely. Gaming alone would not justify this item.
+
+  *Unpark when:* the chosen anchor is confirmed by a 12-pass soak **and** re-applied
+  automatically at boot (persistence item above), so there is a stable baseline to
+  measure the second knob against.
 
   - The driver-reported allowed range on a 5090 is **−1000/+3000 MHz**
     ([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)) — not the "+2000 max"

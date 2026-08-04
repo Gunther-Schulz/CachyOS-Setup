@@ -917,6 +917,25 @@ because the limit is driver-level, not thermal or electrical. This card extrapol
 ([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)) — the same number
 Windows tools enforce, so it is not a `nvcurve` restriction to work around.
 
+**The extrapolation above is corroborated by a measured curve, not just arithmetic.**
+LACT #936 dumped the stock 128-point table off an ASUS Astral 5090: **point 70 =
+1 875 MHz @ 890 mV**. This card's slope predicts **1 864** at the same voltage — 0.6 %
+apart, on a different board partner. The low end of the Blackwell curve is consistent
+across samples, so the 890 mV floor is a property of the generation, not of this card.
+
+Their table also shows what a better-binned card looks like higher up (pt80 = 2 640 @
+950 mV vs our 2 572; pt126 = 3 232 @ 1 240 mV vs our 3 180) — **so the Astral guide's
+`950mV/2902` is only ~+262 on their curve**, well below the +428 already proven here.
+Reading a setting off another card without its base clock is meaningless; a voltage/clock
+pair only means something next to the curve it was applied to.
+
+⚠️ **We are the only datapoint for driver 610.x.** The NvAPI method is confirmed
+externally only on 590.48.01 (LACT) and 580.82.09 (`nvoc`); no third-party source has
+exercised it on 610.x. Ours passed here — `nvcurve setup` on **610.43.03**, eight NvAPI
+functions resolved, write-verify clean (recorded above). Independently, the 610 branch has
+open RTX 5090 reports (Smooth Motion on 610.47, frame pacing on 610.62), none traced to
+the V/F mechanism. Re-run `nvcurve setup` after any driver bump before trusting the curve.
+
 ### The complete GPU crash record — and what it says about which load to test with
 
 Every Xid this machine has ever logged, whole journal, all four retained boots
