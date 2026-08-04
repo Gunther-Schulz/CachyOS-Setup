@@ -243,6 +243,33 @@ worth_continuing() {   # $1 = this rung, $2 = previous rung (may be empty)
   [ -n "$2" ] || return 0
   prev=$(score_of "$2")
   [ "${prev:-0}" -gt 0 ] || return 0
+  # CLOCK STRETCHING — the rung reports a HIGHER clock while delivering LESS work.
+  #
+  # When the requested clock exceeds what the anchor voltage can sustain, the GPU stretches
+  # the clock domain internally. nvidia-smi keeps reporting the value that was ASKED FOR,
+  # so the rung looks like a win in every field except the only one that measures work.
+  # It does not crash, produces no Xid and no artifact — so a stability soak calls it a
+  # PASS. Measured 2026-08-04 at 1000mV/3100: clock +2.8%, power -1.8%, score -3.1%.
+  #
+  # The corroborating signal is POWER, and it is what makes this distinguishable from
+  # ordinary run-to-run noise: power goes as f*V^2, so at a fixed voltage ceiling a real
+  # clock increase MUST cost power. Clock up + power down + score down is a combination
+  # a genuinely faster rung cannot produce. Requiring all three keeps this off legitimate
+  # results — a rung that is merely a bit slower does not also draw less power.
+  cclk=$(clock_of "$1"); pclk=$(clock_of "$2")
+  cpw=$(power_of "$1");  ppw=$(power_of "$2")
+  if [ "$cur" -lt $(( prev * 99 / 100 )) ] \
+     && [ "${cclk:-0}" -gt "${pclk:-0}" ] && [ "${ppw:-0}" -gt 0 ] && [ "${cpw:-0}" -lt "$ppw" ]; then
+    say "    ! CLOCK STRETCHING at $1 — it is stable and SLOWER than $2:"
+    say "        reported clock  ${pclk} -> ${cclk} MHz   (UP)"
+    say "        power           ${ppw} -> ${cpw} W       (DOWN — a real clock rise costs power)"
+    say "        score           ${prev} -> ${cur}        (DOWN)"
+    say "      The card is reporting a clock it is not delivering. This rung PASSES a"
+    say "      stability soak and is still the wrong setting. Stopping: the useful"
+    say "      ceiling is below here, and it is set by score, not by where it crashes."
+    printf '%s\tNOTE\tSTRETCHED\t%s\t\n' "$1" "$(date -Is)" >> "$STATE"; sync
+    return 1
+  fi
   # plateau: asking for more clock is not producing more work, so the next rung risks a
   # crash for nothing. 1% is ~3x the measured 0.3% run-to-run variance.
   if [ "$cur" -lt $(( prev * 101 / 100 )) ]; then
@@ -319,6 +346,12 @@ clock_of() {
   d=$(awk -F'\t' -v l="$1" '$1==l && $2=="FINISHED"{print $5}' "$STATE" | tail -1)
   [ -n "$d" ] && [ -f "$d/sensors.txt" ] || { echo 0; return; }
   awk '$3!="n/a" && $3+0>100 {n++; f+=$2} END{printf "%d", (n? f/n : 0)}' "$d/sensors.txt"
+}
+power_of() {
+  local d
+  d=$(awk -F'\t' -v l="$1" '$1==l && $2=="FINISHED"{print $5}' "$STATE" | tail -1)
+  [ -n "$d" ] && [ -f "$d/sensors.txt" ] || { echo 0; return; }
+  awk '$3!="n/a" && $3+0>100 {n++; p+=$3} END{printf "%d", (n? p/n : 0)}' "$d/sensors.txt"
 }
 
 # ── baseline ────────────────────────────────────────────────────────────────────────

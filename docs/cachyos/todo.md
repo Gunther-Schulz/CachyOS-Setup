@@ -202,11 +202,40 @@
   Judge rungs on delivered score; reported clock is not evidence and lies at the top of the
   curve.
 
-  **Remaining (ready):**
-  1. **12-pass confirmation** of `1000mV/3000` — the `950mV/3100` hard lock cut the session short.
-     `sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
-  2. **Persistence** — save as an nvcurve profile, then a systemd unit. Nothing survives a reboot today.
-  3. **Validate in a real game** — one fixed GravityMark scene is one shader mix, not a workload.
+  ### ⚠️ The ladder is NOT finished — half the anchors were never tested
+
+  The `950mV/3100` hard lock ended the sweep. Planned `ANCHORS="1000 950 900 875"`;
+  **only 1000 and 950 ran.** `1000mV/3000` is the best setting *among what was measured* —
+  it is not the sweep's answer, because the sweep did not finish.
+
+  | anchor | status |
+  |---|---|
+  | 1000 mV | ✅ complete — ceiling 3100, best 3000 |
+  | 950 mV | ✅ complete — ceiling 3000 (3100 hard-locked), best 3000 @ 316 W |
+  | **900 mV** | ❌ **never tested** |
+  | **875 mV** | ❌ **never tested** |
+
+  **This is where the remaining power savings live.** 950 mV already delivered the same
+  score as 1000 mV for **17 W less**; 900 mV may extend that, and the only reason to stop
+  is a rung that cannot hold the floor clock. **First, repair the record** — the
+  `1000mV/3100` retest passed but was run by hand, so the state file does not know, and
+  without it the final selection will wrongly back `1000mV/3000` down to 2900:
+
+  ```fish
+  printf '1000mV/3100\tFINISHED\tPASS\t%s\t/home/g/bench/soak-20260804-175137\n' (date -Is) \
+    | sudo tee -a ~/bench/explore-state.tsv
+  sudo ./tools/gpu-uv-explore.sh --resume --anchors "900 875"
+  ```
+
+  On resume it will ask about the unfinished `950mV/3100` rung — **answer `y`, it did crash
+  the machine.**
+
+  **Remaining (ready), in order:**
+  1. **Finish the ladder at 900 and 875 mV** (above) — the open half of the sweep.
+  2. **12-pass confirmation** of whatever wins.
+     `sudo ./tools/gpu-flatten.sh --mv <mv> --mhz <mhz>; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
+  3. **Persistence** — save as an nvcurve profile, then a systemd unit. Nothing survives a reboot today.
+  4. **Validate in a real game** — one fixed GravityMark scene is one shader mix, not a workload.
 
   ---
 

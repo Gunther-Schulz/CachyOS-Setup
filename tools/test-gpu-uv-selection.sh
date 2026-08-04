@@ -111,6 +111,38 @@ fixture failceil 1000mV/3000:82329:PASS 1000mV/3100:0:FAIL
 check "failed rung is no ceiling" 1000mV/3000 2900 \
   "a rung that FAILED cannot supply margin — the one below it must back off"
 
+
+# ── the clock-stretching detector ───────────────────────────────────────────────────
+# Fires on: score DOWN >1%, reported clock UP, power DOWN. All three are required.
+# Power is what makes it distinguishable from noise — at a fixed voltage ceiling power
+# goes as f*V^2, so a genuine clock rise must cost power. Clock up + power down + score
+# down is a combination a really-faster rung cannot produce.
 echo
-if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS selection cases pass"; exit 0
+echo "=== clock-stretching detector ==="
+
+stretch() {   # cur_score prev_score cur_clk prev_clk cur_W prev_W  -> 0 = fires
+  [ "$1" -lt $(( $2 * 99 / 100 )) ] && [ "$3" -gt "$4" ] && [ "$6" -gt 0 ] && [ "$5" -lt "$6" ]
+}
+scase() {   # name expect(fire|quiet) then the six numbers
+  local name=$1 expect=$2; shift 2
+  local got=quiet; stretch "$@" && got=fire
+  if [ "$got" = "$expect" ]; then printf '  ✅ %-30s %s\n' "$name" "$got"; PASS=$((PASS+1))
+  else printf '  ❌ %-30s got %s, expected %s\n' "$name" "$got" "$expect"; FAIL=$((FAIL+1)); fi
+}
+
+# the real 2026-08-04 defect: 1000mV/3100 against 1000mV/3000
+scase "real: 3100 after 3000"      fire  79778 82329 2881 2802 327 333
+# real legitimate gain below it: 1000mV/3000 after 1000mV/2900 — must stay quiet
+scase "real: 3000 after 2900"      quiet 82329 79560 2802 2743 333 327
+# a rung that is simply slower AND draws more power is not stretching, it is just worse
+scase "slower but power UP"        quiet 79000 82329 2881 2802 340 333
+# slower with the clock DOWN is an ordinary regression, not stretching
+scase "slower, clock down"         quiet 79000 82329 2750 2802 327 333
+# within the 1% noise band: not a finding in either direction
+scase "0.5% drop is noise"         quiet 81900 82329 2881 2802 327 333
+# no previous power reading (first rung) must not fire on a divide-by-nothing
+scase "no previous power"          quiet 79778 82329 2881 2802 327 0
+
+echo
+if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi

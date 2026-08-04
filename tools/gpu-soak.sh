@@ -238,6 +238,54 @@ say "sensors — peak clock $(cmax 2 "$OUT/sensors.txt") MHz   mean $(cmean 2 "$
 say "          peak power $(cmax 3 "$OUT/sensors.txt") W     mean $(cmean 3 "$OUT/sensors.txt") W"
 say "          peak temp  $(cmax 4 "$OUT/sensors.txt") C     peak fan $(cmax 5 "$OUT/sensors.txt") %"
 say ""
+
+# ── WAS THE RUN DISTURBED? ───────────────────────────────────────────────────────────
+# A soak whose scores are depressed because the machine was doing something else is
+# WORSE than no soak: it looks like a real measurement and gets compared against clean
+# runs. This asks the sensor series directly instead of asking the operator to remember.
+#
+# What it is NOT: alt-tabbing away from a fullscreen benchmark on a secondary screen does
+# not disturb it — the compositor never unmaps the window, so it keeps rendering at full
+# rate. Verified 2026-08-04 over a run with repeated tab-outs: 220 of 224 loaded samples,
+# utilization never below 91%, identical to the undisturbed control. Reporting the
+# numbers rather than a bare verdict is what let that be settled instead of guessed.
+#
+# The real signature of a disturbance is a SUSTAINED low-utilization stretch. Single-
+# sample dips are pass boundaries — one per pass, by construction — so the trip point is
+# 4 consecutive samples (12 s), comfortably above a slow transition and far below
+# anything a human would call an interruption.
+# Two passes: the first finds the in-run window (first to last loaded sample), the second
+# measures only inside it. Without the window the leading and trailing IDLE samples — the
+# sampler starts before the benchmark and stops after it — put a 0% into every "minimum
+# utilization" line, which is true and useless: it reports the sampler's own margins, not
+# the run. Reporting a statistic over the wrong interval is how a clean run reads dirty.
+read -r U_TOT U_LOAD U_MEAN U_MIN U_GAP < <(awk '
+  NR==FNR { if (NF>=6 && $6!="n/a" && $6+0>=80) { if (!f) f=FNR; l=FNR } ; next }
+  !f || FNR<f || FNR>l { next }
+  NF>=6 && $6!="n/a" {
+    n++; u=$6+0; s+=u
+    if (!mnset || u<mn) { mn=u; mnset=1 }
+    if (u>=80) { load++; run=0 } else { run++; if (run>gap) gap=run }
+  }
+  END { if(n) printf "%d %d %.1f %d %d", n, load+0, s/n, mn+0, gap+0; else printf "0 0 0 0 0" }
+  ' "$OUT/sensors.txt" "$OUT/sensors.txt")
+
+if [ "${U_TOT:-0}" -gt 0 ]; then
+  # NOT the minimum: GravityMark exits and relaunches between passes, so a 0% sample sits
+  # inside every gap by construction and "min utilization 0%" is true of every clean run.
+  # The longest CONSECUTIVE gap is the statistic that separates a pass boundary (1 sample)
+  # from an interruption (many) — a single reading cannot, however alarming it looks.
+  say "utilization — mean ${U_MEAN}%   loaded ${U_LOAD}/${U_TOT} samples   longest gap $(( U_GAP * 3 ))s"
+  if [ "${U_GAP:-0}" -ge 4 ]; then
+    say ""
+    say "⚠️ DISTURBED RUN — the GPU sat below 80% utilization for $(( U_GAP * 3 ))s straight."
+    say "   Something else had the machine, or the benchmark stalled. The SCORES from this"
+    say "   run are not comparable with clean ones — re-run before deciding anything on"
+    say "   them. Stability findings (Xid, device-lost) are still valid."
+    printf 'DISTURBED\t%s\t%s\n' "$U_GAP" "$U_MIN" > "$OUT/disturbed"
+  fi
+  say ""
+fi
 if [ -n "$SCORES" ]; then
   say "scores: $SCORES"
   echo "$SCORES" | tr ' ' '\n' | grep -E '^[0-9]+$' | awk '

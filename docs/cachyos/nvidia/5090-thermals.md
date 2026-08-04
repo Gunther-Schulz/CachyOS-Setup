@@ -674,7 +674,13 @@ the behaviour of underperforming hardware.
 Not the "huge payoff" the power-limited case would have implied — the card is not
 starved for power at gaming load — but a genuine, measurable win in either direction.
 
-## ✅ RESULT: the undervolt ladder, and the setting to use (2026-08-04)
+## RESULT: the undervolt ladder so far, and the setting to use (2026-08-04)
+
+⚠️ **The sweep is INCOMPLETE.** Planned anchors were `1000 950 900 875` mV; the
+`950mV/3100` hard lock ended the run after **1000 and 950 only**. Everything below is the
+best setting *among what was measured* — **900 and 875 mV were never tested**, and 950 mV
+already showed the same score as 1000 mV for 17 W less, so the trend was still going the
+right way when it stopped. Finishing it is a ready backlog item.
 
 Walked with `tools/gpu-uv-explore.sh`; each rung a 4-pass `gpu-soak.sh` run
 (GravityMark RT, 2560×1440, 200 k asteroids). Stock control measured **in the same
