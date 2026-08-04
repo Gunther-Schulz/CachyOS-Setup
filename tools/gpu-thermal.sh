@@ -16,12 +16,19 @@
 # so hotspot reads n/a without it.
 #
 # Usage:
-#   sudo ./tools/gpu-thermal.sh stock                  # before any undervolt
-#   sudo ./tools/gpu-thermal.sh uv-450w                # after
+#   sudo ./tools/gpu-thermal.sh stock                  # GPU alone, before undervolt
+#   sudo ./tools/gpu-thermal.sh combined -c            # GPU **and** CPU together
+#   sudo ./tools/gpu-thermal.sh uv-450w                # after an undervolt
 #   sudo ./tools/gpu-thermal.sh stock -t 900           # longer load (default 600s)
 #   sudo ./tools/gpu-thermal.sh stock -l "furmark ..." # different load command
 #
-# Compare:  diff ~/bench/gpu-stock/summary.txt ~/bench/gpu-uv-450w/summary.txt
+# -c is the realistic worst case and the only one that shows the two chips
+# INTERACTING: the GPU dumps its heat into the same case air the AIO radiator
+# breathes, so CPU temps under a combined load can exceed a CPU-only run at
+# identical CPU power. Run `stock` and `combined` back to back and diff them —
+# the difference is the coupling, which neither test alone can show.
+#
+# Compare:  diff ~/bench/gpu-stock/summary.txt ~/bench/gpu-combined/summary.txt
 #
 # Requires: a GPU load tool. Default is gpu_burn — `yay -S gpu-burn-git`.
 
@@ -34,6 +41,7 @@ export LC_ALL=C
 SECS=600
 IDLE=30
 LOAD=""
+CPULOAD=0        # -c : load the CPU at the same time (the realistic worst case)
 
 usage() { sed -n '2,28p' "$0"; exit "${1:-0}"; }
 
@@ -41,15 +49,20 @@ usage() { sed -n '2,28p' "$0"; exit "${1:-0}"; }
 LABEL=$1; shift
 case "$LABEL" in -h|--help) usage 0 ;; -*) echo "first arg must be a label" >&2; usage 1 ;; esac
 
-while getopts ":t:i:l:h" opt; do
+while getopts ":t:i:l:ch" opt; do
   case "$opt" in
     t) SECS=$OPTARG ;;
     i) IDLE=$OPTARG ;;
     l) LOAD=$OPTARG ;;
+    c) CPULOAD=1 ;;
     h) usage 0 ;;
     *) echo "unknown option -$OPTARG" >&2; usage 1 ;;
   esac
 done
+
+if [ "$CPULOAD" = 1 ]; then
+  command -v stress-ng >/dev/null || { echo "-c needs stress-ng (sudo pacman -S stress-ng)" >&2; exit 1; }
+fi
 
 [ "$(id -u)" -eq 0 ] || { echo "needs root (hotspot is root-only); re-run with sudo" >&2; exit 1; }
 
@@ -90,13 +103,18 @@ read_sensors() {
 # fan1 = Arctic P12 case fans, whose header reports 2 tach pulses/rev, so the raw
 # value is halved; fan2 = Silent Wings 4 on the AIO radiator, correct as reported.
 # (Channel map: fan-control/coolercontrol-labels.md.)
-MB=""
+MB="" ; CPUHW=""
 for h in /sys/class/hwmon/hwmon*; do
-  [ "$(cat "$h/name" 2>/dev/null)" = nct6799 ] && { MB="$h"; break; }
+  case "$(cat "$h/name" 2>/dev/null)" in
+    nct6799) MB="$h" ;;
+    k10temp) CPUHW="$h" ;;
+  esac
 done
 
+# CPU temps are sampled even for a GPU-only run: "the CPU was idle" is part of
+# what makes a GPU-only baseline comparable to a combined one.
 sample_once() {
-  local s smi case_rpm=n/a aio_rpm=n/a
+  local s smi case_rpm=n/a aio_rpm=n/a tctl=n/a ccd1=n/a ccd2=n/a
   s=$(read_sensors)
   smi=$(nvidia-smi --query-gpu=fan.speed,power.draw,clocks.sm,utilization.gpu \
         --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' | tr ',' ' ')
@@ -104,7 +122,12 @@ sample_once() {
     case_rpm=$(( $(cat "$MB/fan1_input" 2>/dev/null || echo 0) / 2 ))
     aio_rpm=$(cat "$MB/fan2_input" 2>/dev/null || echo 0)
   fi
-  echo "$(date +%s) ${s:-n/a n/a n/a n/a n/a} ${smi:-n/a n/a n/a n/a} $case_rpm $aio_rpm"
+  if [ -n "$CPUHW" ]; then
+    tctl=$(awk '{printf "%.1f", $1/1000}' "$CPUHW/temp1_input" 2>/dev/null || echo n/a)
+    ccd1=$(awk '{printf "%.1f", $1/1000}' "$CPUHW/temp3_input" 2>/dev/null || echo n/a)
+    ccd2=$(awk '{printf "%.1f", $1/1000}' "$CPUHW/temp4_input" 2>/dev/null || echo n/a)
+  fi
+  echo "$(date +%s) ${s:-n/a n/a n/a n/a n/a} ${smi:-n/a n/a n/a n/a} $case_rpm $aio_rpm $tctl $ccd1 $ccd2"
 }
 
 sampler() { while :; do sample_once; sleep 2; done > "$1"; }
@@ -125,9 +148,11 @@ maxdelta() {
 report() {   # $1=phase label  $2=file
   printf '  %-5s core %s  mem %s  hotspot %s  Δhot-core %s °C\n' \
     "$1" "$(colmax 2 "$2")" "$(colmax 3 "$2")" "$(colmax 4 "$2")" "$(maxdelta "$2")"
-  printf '        %s W  %s MHz   fans: GPU %s%%  case %s rpm  AIO %s rpm\n' \
-    "$(colmax 8 "$2")" "$(colmax 9 "$2")" "$(colmax 7 "$2")" \
-    "$(colmax 11 "$2")" "$(colmax 12 "$2")"
+  printf '        %s W  %s MHz   CPU Tctl %s  CCD1 %s  CCD2 %s\n' \
+    "$(colmax 8 "$2")" "$(colmax 9 "$2")" \
+    "$(colmax 13 "$2")" "$(colmax 14 "$2")" "$(colmax 15 "$2")"
+  printf '        fans: GPU %s%%  case %s rpm  AIO %s rpm\n' \
+    "$(colmax 7 "$2")" "$(colmax 11 "$2")" "$(colmax 12 "$2")"
 }
 
 cat <<EOF
@@ -152,8 +177,16 @@ sampler "$OUT/idle.txt" & p=$!; sleep "$IDLE"; kill $p 2>/dev/null
 report idle "$OUT/idle.txt"
 
 echo; echo "--- LOAD: $LOAD ---"
+[ "$CPULOAD" = 1 ] && echo "    + CPU all-core at the same time (combined worst case)"
 echo "    (first 2-3 min are not steady state; watch the delta settle)"
 sampler "$OUT/load.txt" & p=$!
+cpid=""
+if [ "$CPULOAD" = 1 ]; then
+  # Slightly longer than the GPU load so the CPU never drops out first and
+  # leaves the tail of the run measuring a GPU-only case under a combined label.
+  stress-ng --matrix 0 -t $(( SECS + 30 )) >/dev/null 2>&1 &
+  cpid=$!
+fi
 sh -c "$LOAD" >"$OUT/load-tool.log" 2>&1 &
 lp=$!
 while kill -0 $lp 2>/dev/null; do
@@ -164,7 +197,9 @@ while kill -0 $lp 2>/dev/null; do
     "$(tail -1 "$OUT/load.txt" | cut -d' ' -f4)" "$(maxdelta "$OUT/load.txt")" \
     "$(tail -1 "$OUT/load.txt" | cut -d' ' -f8)"
 done
-wait $lp 2>/dev/null; kill $p 2>/dev/null; echo
+wait $lp 2>/dev/null
+[ -n "$cpid" ] && kill $cpid 2>/dev/null
+kill $p 2>/dev/null; echo
 
 {
   echo "=== $LABEL ==="
