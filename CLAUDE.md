@@ -11,7 +11,23 @@ Read before editing docs in this repo. (Global working rules live in
   their already-decided design; re-deriving one from scratch wastes the session
   and risks contradicting a decision already made.
 - **Docs:** `docs/cachyos/<area>/` — current applied state per the principle below.
+- **Runbooks:** `docs/runbooks/` — standing procedures written for a fresh context, and
+  machine-independent by design: no result, path or number from *this* hardware belongs in
+  one. A runbook is the reusable half; `docs/cachyos/<area>/` holds what this machine
+  measured. If a procedure only works here, it is not a runbook.
 - **Scripts/configs:** `fan-control/`, `monitor-tests/`, `tools/`.
+
+## Verify
+
+Work in this repo is trustworthy when these pass:
+
+```sh
+./tools/test-gpu-uv-selection.sh     # GPU ladder selection + clock-stretch detector
+bash -n tools/*.sh                   # every tool parses
+```
+
+Tools carry their own verification notes; a tool that decides something (picks a winner,
+raises an alarm) needs a test that has gone **red on the real defect** before it counts.
 
 ## Clean-state principle
 

@@ -34,9 +34,14 @@
 set -uo pipefail
 export LC_ALL=C
 
-ANCHORS="1000 950 900 875"
-CLOCKS="2800 2900 3000 3100 3200"
-FLOOR=2800          # an anchor that cannot hold this is too low — stop the sweep
+# Anchors and clocks are DERIVED FROM THE CARD'S OWN V/F CURVE unless given explicitly.
+# They were hardcoded to this machine's 5090 (1000-875 mV, 2800-3200 MHz), which silently
+# made the tool useless on any other GPU: on a laptop card those voltages sit above the
+# curve's top and every rung would be refused, or worse, clamped into nonsense. A ladder's
+# rungs are a property of the card, so the card is what supplies them.
+ANCHORS=""          # empty = derive; --anchors overrides
+CLOCKS=""           # empty = derive; --clocks overrides
+FLOOR=0             # 0 = derive (the lowest clock in the list)
 PASSES=4            # SCREENING passes per rung (~11 min) — cheap enough to sweep widely
 CONFIRM=12          # passes for the final winner only (~33 min) — the run that decides
 SCREEN=0
@@ -97,6 +102,71 @@ fi
 # Root is needed to WRITE curve edits. --status only reads, so the check lives here,
 # below the status branch — it sat above it before, gating a read-only operation.
 [ "$(id -u)" -eq 0 ] || { echo "needs root (applies curve edits); re-run with sudo" >&2; exit 1; }
+
+# ── derive the ladder from THIS card's V/F curve ─────────────────────────────────────
+# The fractions below are the only tuned constants, and they are read off the shape of a
+# boost curve rather than off this particular card:
+#
+#   anchors 0.85 -> 0.70 of the curve's top voltage. Above ~0.85 there is nothing to win —
+#     that is where the card already runs. Below ~0.70 the frequency the curve offers has
+#     collapsed far enough that no realistic flatten holds it, so rungs there only cost
+#     time and crashes. 50 mV steps: finer than the run-to-run noise can resolve in one
+#     overnight sweep.
+#   clocks 0.88 -> 1.01 of the curve's top frequency, in 100 MHz steps. The top end goes
+#     slightly PAST the curve maximum on purpose: a flatten's whole point is to reach a
+#     clock the stock curve only offers at a higher voltage.
+#
+# Sanity check on this machine's 5090 (curve top 1240 mV / 3180 MHz): derives
+# 1054/1004/954/904/868 mV and 2800-3200 MHz — within one step of the hand-picked
+# 1000/950/900/875 and identical on clocks. The derivation reproduces the manual choice,
+# which is the evidence that it is a rule and not a fit to one card.
+derive_ladder() {
+  local json
+  json=$("$NVCURVE" read --json 2>/dev/null) || return 1
+  echo "$json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+pts=[p for p in d["vf_curve"] if p.get("domain")=="gpu" and p["volt_uV"]>0]
+if not pts: sys.exit(1)
+volts=sorted({p["volt_uV"]/1000.0 for p in pts})
+vmax=volts[-1]; fmax=max(p["freq_kHz"] for p in pts)/1000.0
+def snap(v): return min(volts, key=lambda x: abs(x-v))
+anchors=[]
+v=round(vmax*0.85); lo=vmax*0.70
+while v>=lo:
+    s=int(round(snap(v)))
+    if s not in anchors: anchors.append(s)
+    v-=50
+clocks=[]
+c=int(round(fmax*0.88/100)*100); hi=fmax*1.01
+while c<=hi:
+    clocks.append(c); c+=100
+if not anchors or not clocks: sys.exit(1)
+print(" ".join(str(a) for a in anchors))
+print(" ".join(str(c) for c in clocks))
+print("%.0f %.0f" % (vmax, fmax))
+'
+}
+
+if [ -z "$ANCHORS" ] || [ -z "$CLOCKS" ]; then
+  if DERIVED=$(derive_ladder); then
+    D_ANCHORS=$(echo "$DERIVED" | sed -n 1p)
+    D_CLOCKS=$(echo "$DERIVED" | sed -n 2p)
+    D_TOP=$(echo "$DERIVED" | sed -n 3p)
+    [ -z "$ANCHORS" ] && ANCHORS=$D_ANCHORS
+    [ -z "$CLOCKS" ] && CLOCKS=$D_CLOCKS
+    echo "derived from this card's V/F curve (top ${D_TOP% *} mV / ${D_TOP#* } MHz):"
+    echo "  anchors: $ANCHORS mV"
+    echo "  clocks:  $CLOCKS MHz"
+    echo "  override with --anchors / --clocks if you know better for this card."
+  else
+    echo "Could not read the V/F curve, so the ladder cannot be derived." >&2
+    echo "  Check:  sudo $NVCURVE read --json" >&2
+    echo "  Or supply them yourself:  --anchors \"1000 950 900\" --clocks \"2800 2900 3000\"" >&2
+    exit 1
+  fi
+fi
+[ "${FLOOR:-0}" -gt 0 ] || FLOOR=$(echo "$CLOCKS" | tr ' ' '\n' | sort -n | head -1)
 
 BASE_DONE=0
 declare -A ANCHOR_MAX ANCHOR_DONE

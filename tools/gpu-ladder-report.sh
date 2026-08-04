@@ -40,8 +40,12 @@ done
 [ -f "$STATE" ] || { echo "no state file at $STATE" >&2; exit 1; }
 ROWS=$(mktemp); trap 'rm -f "$ROWS"' EXIT
 
-# stock reference, measured 2026-08-04 (GravityMark RT, 2560x1440, 200k asteroids)
-REF_W=370; REF_MHZ=2803; SESSION_REF=""
+# Stock reference. There is deliberately NO built-in default: the previous 370 W / 2803 MHz
+# came from this repo's own 5090 and would have been silently applied to anyone else's card,
+# turning every "vs stock" figure into a comparison against unrelated hardware — wrong, and
+# wrong in a way that reads as a measurement. A ladder measures its own stock rung; if it
+# has not yet, the column says so instead of inventing a baseline.
+REF_W=0; REF_MHZ=0; REF_SC=0; SESSION_REF=""
 
 printf '%8s %8s %9s %9s %8s %7s %9s %10s %s\n' \
   "rung" "verdict" "mean W" "vs stock" "mean MHz" "peak C" "peak fan" "mean score" "passes"
@@ -59,7 +63,8 @@ while IFS='|' read -r rung ts; do
   # which is exactly what it did here: 1000mV/2800 and 1000mV/2900 reported identical
   # power, clock and score because both resolved to the first run's data.
   d=$(awk -F'\t' -v l="$rung" '$1==l && $2=="FINISHED" && $5!=""{print $5}' "$STATE" | tail -1)
-  if [ -z "$d" ]; then
+  fin=$(awk -F'\t' -v r="$rung" '$1==r && $2=="FINISHED"{print 1}' "$STATE" | tail -1)
+  if [ -z "$d" ] && [ -n "$fin" ]; then
     d=$(for x in "$home"/bench/soak-*/; do
           [ -f "$x/sensors.txt" ] || continue
           xs=$(date -r "$x" +%s 2>/dev/null) || continue
@@ -81,55 +86,94 @@ while IFS='|' read -r rung ts; do
     np=$(grep -c . "$d/scores.txt")
     ms=$(awk '{s+=$1;n++} END{if(n) printf "%.0f", s/n; else print "-"}' "$d/scores.txt")
   fi
-  # If this ladder measured its own stock baseline, compare against THAT rather than the
-  # hardcoded reference — a control from the same session beats one from hours earlier.
-  if [ "$rung" = "stock" ] && [ "$mw" != "-" ]; then REF_W=$mw; REF_MHZ=$mf; SESSION_REF=1; fi
-  dw="-"; [ "$mw" != "-" ] && dw=$(awk -v a="$mw" -v b="$REF_W" 'BEGIN{printf "%+.0f%%", (a/b-1)*100}')
+  # The ladder's own stock rung IS the reference — measured on this card, in this session,
+  # under these ambient conditions. There is no other source for it.
+  if [ "$rung" = "stock" ] && [ "$mw" != "-" ]; then REF_W=$mw; REF_MHZ=$mf; REF_SC=$ms; SESSION_REF=1; fi
+  dw="-"
+  [ "$mw" != "-" ] && [ "${REF_W:-0}" -gt 0 ] \
+    && dw=$(awk -v a="$mw" -v b="$REF_W" 'BEGIN{printf "%+.0f%%", (a/b-1)*100}')
   printf '%8s %8s %9s %9s %8s %7s %9s %10s %s\n' \
     "$rung" "$v" "$mw" "$dw" "$mf" "$pt" "$pfan" "$ms" "$np"
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$rung" "$v" "$mw" "$mf" "$ms" "$np" >> "$ROWS"
 done < <(awk -F'\t' '$2=="STARTED"{print $1"|"$4}' "$STATE")
 
 echo
-echo "stock reference: ${REF_MHZ} MHz, ${REF_W} W${SESSION_REF:+  <- measured in THIS ladder run (proper control)}"
+if [ "${REF_W:-0}" -gt 0 ]; then
+  echo "stock reference: ${REF_MHZ} MHz, ${REF_W} W${SESSION_REF:+  <- measured in THIS ladder run (proper control)}"
+else
+  echo "stock reference: NONE — this ladder has no completed 'stock' rung, so the"
+  echo "  'vs stock' column is blank and no verdict is computed. Run the sweep from the"
+  echo "  start (it measures stock first) rather than comparing against a number from"
+  echo "  another card or another day."
+fi
 echo
 
 # ── the analysis, rather than instructions for doing it by hand ─────────────────────
-awk -F'\t' -v rw="$REF_W" -v rf="$REF_MHZ" '
+awk -F'\t' -v rw="$REF_W" -v rf="$REF_MHZ" -v rs="$REF_SC" '
+BEGIN { if (rw+0 <= 0 || rf+0 <= 0) {
+          print "No stock baseline in this ladder — nothing to compare against."
+          print "The verdict is deliberately withheld rather than computed against a"
+          print "reference from different hardware."; exit } }
 $1=="stock" || $3=="-" || $2=="RUNNING" { next }
-{ n++; rung[n]=$1; verd[n]=$2; w[n]=$3+0; f[n]=$4+0; sc[n]=$5; }
+{ n++; rung[n]=$1; verd[n]=$2; w[n]=$3+0; f[n]=$4+0; sc[n]=$5+0
+  # split "1000mV/3100" into its anchor and its TARGET clock. The target is what was
+  # asked for; f[] is what the card reported delivering. Keeping them apart is the whole
+  # point — the gap between them is the defect this tool exists to surface.
+  if (split($1, q, "mV/")==2) { anc[n]=q[1]+0; tgt[n]=q[2]+0
+    if (verd[n]=="PASS" && tgt[n]>ceil[anc[n]]) ceil[anc[n]]=tgt[n] } }
 END {
   if (n==0) { print "No completed rungs yet — nothing to analyse."; exit }
+  if (rs+0 <= 0) { print "Stock rung has no score — cannot rank. Re-run the baseline."; exit }
   print "═══ VERDICT ═══"
+  print "  Ranked by SCORE. Reported clock is NOT used: a rung can report a higher clock"
+  print "  and deliver less work (the card stretches the clock when the voltage cannot"
+  print "  sustain it), which is stable, passes every soak, and is still the wrong setting."
+  print ""
   best=0
   for (i=1;i<=n;i++) {
-    dw=(w[i]/rw-1)*100; df=(f[i]/rf-1)*100
+    ds=(sc[i]/rs-1)*100; dw=(w[i]/rw-1)*100; df=(f[i]/rf-1)*100
     tag = (verd[i]!="PASS") ? "  [" verd[i] "]" : ""
-    if (df>=-0.5 && dw<=-2)      { note="WINS BOTH — clock held, power down"; if(verd[i]=="PASS") best=i }
-    else if (df>=-0.5)           { note="clock held, power not improved" }
-    else if (dw<=-2)             { note=sprintf("trade: %.1f%% clock for %.1f%% power", -df, -dw) }
+    # STRETCHED is a within-anchor comparison, NOT a stock one. A rung can beat stock
+    # comfortably and still be stretched relative to the rung below it — 1000mV/3100
+    # scored +3.7% over stock while losing 3.1% to 1000mV/3000. Comparing against stock
+    # would have called it a winner, which is the error this whole tag exists to prevent.
+    str_by=""
+    for (j=1;j<=n;j++)
+      if (j!=i && anc[j]==anc[i] && tgt[j]<tgt[i] && f[j]<f[i] && sc[j]>sc[i]*1.01) str_by=rung[j]
+    # COVERED: a higher rung at the same anchor passed, so this margin is measured.
+    # (No apostrophes in here — the awk program is single-quoted and one would end it.)
+    cov = (ceil[anc[i]] > tgt[i])
+    if (str_by!="") { sb=0; for (k=1;k<=n;k++) if (rung[k]==str_by) sb=sc[k]
+                      note="STRETCHED — reports more clock than " str_by " but delivers " sprintf("%+.1f", (sc[i]/sb-1)*100) "% work" }
+    else if (ds>=-0.5 && dw<=-2) { note="WINS BOTH — score held, power down" (cov?"  [margin proven]":"  [top rung — no margin above]")
+                                   if(verd[i]=="PASS" && cov && (best==0 || sc[i]>sc[best])) best=i }
+    else if (ds>=-0.5)           { note="score held, power not improved" }
+    else if (dw<=-2)             { note=sprintf("trade: %.1f%% score for %.1f%% power", -ds, -dw) }
     else                         { note="worse on both — no reason to use" }
-    printf "  %-6s  clock %+5.1f%%   power %+5.1f%%   %s%s\n", rung[i], df, dw, note, tag
+    printf "  %-12s score %+5.1f%%   power %+5.1f%%   %s%s\n", rung[i], ds, dw, note, tag
   }
   print ""
   if (best) {
-    printf "  ► BEST: %s — beats or matches stock clock at %.0f%% less power.\n", rung[best], -(w[best]/rw-1)*100
-    print  "    That is the outcome worth keeping: faster-or-equal, and cooler."
+    printf "  ► BEST: %s — %+.1f%% score at %.0f%% less power.\n", rung[best], (sc[best]/rs-1)*100, -(w[best]/rw-1)*100
+    printf "    A higher rung at %d mV (%d MHz) also passed, so its stability margin is\n", anc[best], ceil[anc[best]]
+    print  "    measured rather than assumed. Faster-or-equal, cooler, and covered."
+    # name a higher raw score that lost only because it had no proven margin
+    raw=0; for (i=1;i<=n;i++) if (verd[i]=="PASS" && sc[i]>sc[best] && (raw==0 || sc[i]>sc[raw])) raw=i
+    if (raw) printf "    (%s scored higher at %d, but nothing above it passed — it would have\n     to back off to an untested rung.)\n", rung[raw], sc[raw]
   } else {
-    print "  ► No rung yet beats stock clock while cutting power."
-    print "    Every completed rung trades clock for watts. Pick one by how much"
-    print "    performance you will give up, or wait for the higher targets."
+    print "  ► No rung both beats stock score while cutting power AND has a passing rung"
+    print "    above it. Either finish the ladder, or accept the best top-rung result and"
+    print "    back it off by one — untested, which is why it is not recommended here."
   }
-  # diminishing returns between adjacent rungs
   if (n>=2) {
     print ""
     for (i=2;i<=n;i++) {
-      gain=(f[i]/f[i-1]-1)*100
+      gain=(sc[i]/sc[i-1]-1)*100
       if (gain < 1 && gain > -1)
-        printf "  ! %s over %s is only %+.1f%% clock — returns are flattening here.\n", rung[i], rung[i-1], gain
+        printf "  ! %s over %s is only %+.1f%% score — returns are flattening here.\n", rung[i], rung[i-1], gain
     }
   }
   print ""
-  print "  Reminder: settle ONE rung below the highest that passed. Instability at the"
-  print "  edge is probabilistic — a rung that passes today can fail on a longer sample."
+  print "  Reminder: prefer a rung with a PASSING rung ABOVE it at the same anchor — that"
+  print "  margin is demonstrated. Only back off one rung when nothing above it passed."
 }' "$ROWS"
