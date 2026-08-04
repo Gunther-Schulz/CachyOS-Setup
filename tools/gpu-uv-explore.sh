@@ -146,6 +146,41 @@ snap_to() {
   echo "$CLOCK_LIST" | tr ' ' '\n' | sort -rn | awk -v t="$1" '$1<=t{print; exit}'
 }
 
+# Should the climb continue? Answers from the SCORE, which degrades before a hang.
+# Returns 1 (stop) on a plateau, a regression, or widening spread. This is what lets the
+# sweep stop at the practical maximum instead of walking into a crash to find it.
+worth_continuing() {   # $1 = this rung, $2 = previous rung (may be empty)
+  local cur prev sp base_sp
+  cur=$(score_of "$1")
+  [ "${cur:-0}" -gt 0 ] || return 0                    # no score to judge on — carry on
+  sp=$(spread_of "$1"); base_sp=$(spread_of stock)
+
+  # widening spread = the card is recovering from faults it has not yet crashed on
+  # Floor the baseline at 2 per mille so a very tight control does not make the
+  # threshold impossibly strict; 3x that is the trip point.
+  [ "${base_sp:-0}" -lt 2 ] && base_sp=2
+  if [ "${sp:-0}" -gt $(( base_sp * 3 )) ]; then
+    say "    ! score spread ${sp}/1000 vs baseline ${base_sp}/1000 — erratic, stopping before it hangs"
+    return 1
+  fi
+  # a regression below the baseline is degradation, not headroom
+  if [ "${STOCK_SCORE:-0}" -gt 0 ] && [ "$cur" -lt $(( STOCK_SCORE * 99 / 100 )) ]; then
+    say "    ! score ${cur} is below stock ${STOCK_SCORE} — degrading, stopping"
+    return 1
+  fi
+  [ -n "$2" ] || return 0
+  prev=$(score_of "$2")
+  [ "${prev:-0}" -gt 0 ] || return 0
+  # plateau: asking for more clock is not producing more work, so the next rung risks a
+  # crash for nothing. 1% is ~3x the measured 0.3% run-to-run variance.
+  if [ "$cur" -lt $(( prev * 101 / 100 )) ]; then
+    say "    ! score ${cur} vs ${prev} — under 1% gain, the plateau. Stopping here rather"
+    say "      than climbing into a crash for no measurable benefit."
+    return 1
+  fi
+  return 0
+}
+
 run_rung() {   # $1 = label
   printf '%s\tSTARTED\t\t%s\n' "$1" "$(date -Is)" >> "$STATE"; sync
   local out rc
@@ -159,6 +194,25 @@ run_rung() {   # $1 = label
     *) printf '%s\tFINISHED\tFAIL\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
   esac
   sync; return $rc
+}
+
+# Mean score and spread for a recorded rung. Instability announces itself in the SCORE
+# before it crashes: a card recovering from micro-faults loses throughput and gets
+# erratic. Reading that is how the sweep can find the practical maximum without ever
+# having to reach the wall.
+score_of() {
+  local d; d=$(awk -F'\t' -v l="$1" '$1==l && $2=="FINISHED"{print $5}' "$STATE" | tail -1)
+  [ -n "$d" ] && [ -s "$d/scores.txt" ] || { echo 0; return; }
+  awk '{s+=$1;n++} END{printf "%d", (n? s/n : 0)}' "$d/scores.txt"
+}
+# Peak-to-peak spread in PER MILLE, not percent. The baseline's real spread is ~2 per
+# mille (0.19%), which truncates to 0 in integer percent — silently disabling the guard
+# that depends on it. Integer percent has no resolution at the scale being measured.
+spread_of() {   # returns tenths of a percent
+  local d; d=$(awk -F'\t' -v l="$1" '$1==l && $2=="FINISHED"{print $5}' "$STATE" | tail -1)
+  [ -n "$d" ] && [ -s "$d/scores.txt" ] || { echo 0; return; }
+  awk '{s+=$1; if(!mn||$1<mn)mn=$1; if($1>mx)mx=$1}
+       END{ if(NR>1) printf "%d", (mx-mn)*1000/(s/NR); else print 0 }' "$d/scores.txt"
 }
 
 # Mean delivered clock for a recorded rung, from the soak dir the state file names.
@@ -179,9 +233,10 @@ else
   run_rung "stock" || { say "baseline FAILED — unstable at stock. Stop and investigate."; exit 1; }
   say "  ✓ baseline recorded"
 fi
-STOCK_CLK=$(clock_of stock)
+STOCK_CLK=$(clock_of stock); STOCK_SCORE=$(score_of stock)
 if [ "${STOCK_CLK:-0}" -gt 0 ]; then
-  say "  stock delivers ${STOCK_CLK} MHz — the crossover the sweep stops at"
+  say "  stock delivers ${STOCK_CLK} MHz, score ${STOCK_SCORE}, spread $(spread_of stock)%"
+  say "  — the crossover and plateau rules are measured against these"
 else
   say "  ⚠️ could not read the stock clock; the crossover stop rule is DISABLED"
 fi
@@ -201,14 +256,20 @@ for mv in $ANCHORS; do
     continue
   fi
 
+  PREV_LABEL=""
   if [ -z "$CEILING" ]; then
-    # first anchor: climb until failure
+    # first anchor: climb until the score stops improving, or until failure
     for mhz in $CLOCK_LIST; do
       if grep -qF "${mv}mV/${mhz}	FINISHED" "$STATE" 2>/dev/null; then
         say "  ${mhz} MHz — already decided in a previous run, skipping"; continue; fi
       say "  trying ${mhz} MHz ..."
       "$FLATTEN" --mv "$mv" --mhz "$mhz" >/dev/null 2>&1 || { say "    flatten refused — skipping"; continue; }
-      if run_rung "${mv}mV/${mhz}"; then say "    ✓ passed"; BEST_AT_ANCHOR=$mhz
+      if run_rung "${mv}mV/${mhz}"; then
+        say "    ✓ passed"
+        if ! worth_continuing "${mv}mV/${mhz}" "$PREV_LABEL"; then
+          BEST_AT_ANCHOR=$mhz; "$NVCURVE" write --reset >/dev/null 2>&1; break
+        fi
+        BEST_AT_ANCHOR=$mhz; PREV_LABEL="${mv}mV/${mhz}"
       else say "    ✗ failed — anchor maximum is ${BEST_AT_ANCHOR:-none}"; break; fi
       "$NVCURVE" write --reset >/dev/null 2>&1
     done
