@@ -122,7 +122,25 @@
   8. `rasdaemon` (now running) is the backstop for marginal-but-passing EXPO: corrected errors land in `ras-mc-ctl --errors` and persist across reboots. Baseline as of 2026-08-03 is **no errors in any class**.
 
   **C — CPU tuning. Paths, per the ASUS 800-series BIOS manual (E25269):**
-  - **Curve Optimizer:** `Advanced → AMD Overclocking → Precision Boost Overdrive → Curve Optimizer`. Three modes — **All Cores / Per Core / Per CCD**. Sign **Negative**, magnitude per the first-setting note below.
+  - **Curve Optimizer — path CONFIRMED from the live screen 2026-08-04** (photographed), not from the manual: `Advanced → AMD Overclocking → AMD Overclocking → Precision Boost Overdrive → Curve Optimizer`. Note `AMD Overclocking` appears **twice** in the breadcrumb; that is the real path.
+
+    **⚠️ The trap: `All Core Curve Optimizer Sign` defaults to `Positive`.** The submenu has three fields, and the sign field is separate from the magnitude field. Typing `15` into Magnitude while Sign still reads `Positive` gives **+15 — an OVERVOLT**, the exact opposite of the intent, and it will look like it worked because the machine boots and benches fine. **Set Sign = `Negative` FIRST, then the magnitude, then re-read both before leaving the page.**
+
+    **Settings to apply:**
+
+    | Field | Set to |
+    |---|---|
+    | Curve Optimizer | `All Cores` |
+    | All Core Curve Optimizer Sign | **`Negative`** ← change this first |
+    | All Core Curve Optimizer Magnitude | **`15`** |
+
+    Magnitude is in counts of roughly 3–5 mV, so −15 ≈ −45…−75 mV. `Per Core` and `Per CCD` also exist; **start with `All Cores`** — a per-core matrix multiplies the validation work, and the all-core result is what tells you whether a per-core pass is even worth it. If it later needs splitting, `Per CCD` is the natural next step on this chip, because the two dies are not alike: CCD0 carries the 3D V-Cache and clocks lower, CCD1 does not and boosts higher (~5 385 MHz observed single-thread).
+
+    **⚠️ Negative CO fails at IDLE, not under load.** The failure mode is a single core boosting to max frequency at light load, where the reduced voltage no longer holds — so an all-core stress test that passes proves almost nothing about CO. That is why step 4 of the test suite (full-day idle soak) is not optional padding; it is the test that actually targets this. Symptom is typically a spontaneous reboot or a WHEA/Cache Hierarchy entry in `ras-mc-ctl --errors` while the machine is doing nothing.
+
+  - **Leave these alone in the same menu** (all confirmed present on-screen 2026-08-04): `PBO Limits` = `Auto`, `Precision Boost Overdrive Scalar Ctrl` = `Auto` (scalar raises sustained voltage — it pulls against undervolting), `CPU Boost Clock Override` = `Disabled` (adds a second instability variable on top of CO), `Platform Thermal Throttle Ctrl` = `Auto`.
+  - **`GFX Curve Optimizer` — do not touch.** Separate submenu with its own Sign/Magnitude, and it governs the **integrated Radeon graphics**, a different voltage domain from the CPU cores. The iGPU is unused here (RTX 5090 drives the displays; see [hardware/hide-amd-apu.md](hardware/hide-amd-apu.md)), so there is nothing to gain and one more variable to debug. Leave Sign/Magnitude at `Positive`/`0`.
+  - **`Curve Shaper` — leave everything `Auto` for now.** Zen 5 feature: a grid of offsets per frequency band × temperature band (`Min/Low/Med/… Frequency` × `Low/Med/High Temperature`, all `Auto` as of 2026-08-04). It exists precisely to fix the idle-instability problem above — it can apply a gentler offset in the low-frequency/low-temperature cells where negative CO bites. **That makes it the right tool if −15 all-core turns out to be idle-unstable but stable under load**: relax the low-frequency/low-temperature cells rather than backing the whole curve off. Do not open it on the first pass — it is a 9+ cell matrix and there is no baseline yet to judge it against.
   - ✅ **ECO Mode — 105 W applied 2026-08-04.** Superseded warning, kept for the lesson: the ASUS 800-series manual documents only a **65 W** tier, and the real board offers 105 W. A generic cross-board manual under-reports what a specific board exposes — check the screen. The fallback below was therefore never needed. **Had 105 W been absent, do not take 65 W as a substitute** — that is a far deeper cut than planned (65 W TDP ≈ 88 W PPT vs 105 W TDP ≈ 142 W, against a 230 W stock PPT) and would cost well more than the ~5% the plan is built around. Instead set the 105 W equivalent manually: `Precision Boost Overdrive → PBO Limits → Manual` with **PPT = 142 W** (leave TDC/EDC auto unless they block it). Check on-screen first — the manual is a generic cross-board 800-series doc, so this board may still expose 105 W.
   **Sequencing (operator decisions 2026-08-03): proceed now rather than waiting for board clearance, and set EXPO + ECO + CO in ONE BIOS visit.** Basis: ~a week without random reboots as the baseline, and `rasdaemon` now running to catch corrected errors persistently.
   **Attribution comes from the TEST SUITE, not from staging the changes** — each test isolates one variable, so one visit is fine provided the suite actually gets run, in this order:
