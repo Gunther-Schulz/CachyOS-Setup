@@ -34,6 +34,21 @@ devices, re-save the profile under the same name. The sleep hook's dark half is 
 by design — `openrgb -m direct -c 000000` broadcasts to whatever is detected, no
 profile matching involved.
 
+## The profile, human-readable (rebuild reference if the .orp is lost)
+
+Saved 2026-08-05, all devices in **Direct** mode, brightness up:
+
+| device | color |
+|---|---|
+| Corsair Vengeance RGB DDR5 (both sticks) | `0623FF` (blue) |
+| ASUS ROG STRIX B850-G | `FF2600` (orange-red) |
+| RTX 5090 FE | white (hardware is white-only; the setting is brightness) |
+
+⚠️ When re-saving in the GUI: these controllers are **write-only** — the GUI cannot
+read colors back, so it shows its own staged state (black, brightness at minimum)
+even while the hardware is lit. Set color **and raise the Brightness slider** on every
+device before saving, or the profile stores "correct color at brightness zero".
+
 ## Device notes
 
 - Each Corsair DIMM is its **own OpenRGB device** (direct SMBus, not routed through
