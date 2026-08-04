@@ -154,6 +154,26 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
+- **Desktop — READY: tie case fans to GPU temperature as well as CPU (operator wants to explore this, 2026-08-04).**
+
+  **The gap, measured not assumed:** case fans are driven from CPU temperature only, so a GPU-only load — the common case in gaming — gives them no reason to ramp. With the GPU at **575 W and the CPU idle**, CPU Tctl rose from ~51 °C to **65–72 °C purely from case-air heat soak** before the fans responded. They did eventually reach 1 523 rpm, but only *after* the GPU's heat had reached the CPU: a lagging, indirect response to the wrong sensor.
+
+  ✅ **Confirmed available — nothing to install.** The running `coolercontrold 4.3.1-2` already enumerates the card as its own device:
+  ```
+  GPU    NVIDIA GeForce RTX 5090
+  CPU    AMD Ryzen 9 9950X3D 16-Core Processor
+  Hwmon  nct6799            ← fan1 case / fan2 AIO / fan7 pump
+  ```
+  (Queried via the daemon API at `localhost:11987`; procedure and channel labels in [fan-control/coolercontrol-labels.md](../../fan-control/coolercontrol-labels.md).)
+
+  **Design: a Mix profile taking the MAX of CPU and GPU temperature**, not a replacement of the CPU source. Replacing it would trade one blind spot for the other — a CPU-only compile load is the *hottest* thing the CPU does (79.8 °C at 8 threads, above the all-core figure) and must still drive the fans.
+
+  **Sequencing:** after ECO/CO and the GPU undervolt are settled — a curve tuned against the current thermal envelope has to be redone once either changes. Background and the measured numbers: [nvidia/5090-thermals.md](nvidia/5090-thermals.md).
+
+  **Done when:** a GPU-only load (`sudo ./tools/gpu-thermal.sh <label>`) ramps the case fans without waiting for CPU heat soak, verified by comparing the `case_rpm` column against the `gpu-stock` run's lag.
+
+  ⚠️ **Basis for the general idea is community consensus** — no controlled study found. The *specific* lag above is measured on this machine, which is what justifies the work.
+
 - **Desktop — READY: GPU stress test, to be run alongside `nvidia-gpu-sensors --watch`.** The point is not "does it crash" but capturing **hotspot-minus-core under sustained load** — the delta that reveals a bad mount or dried thermal pads, and which is **4 °C at idle** on this card (measured 2026-08-04, once the root hotspot read worked; an earlier version of this line said 8 °C, which was the memory−core delta from before hotspot was readable). Three load types, because they stress different things:
 
   | Tool | Install | Run | What it loads |
