@@ -143,6 +143,57 @@ scase "0.5% drop is noise"         quiet 81900 82329 2881 2802 327 333
 # no previous power reading (first rung) must not fire on a divide-by-nothing
 scase "no previous power"          quiet 79778 82329 2881 2802 327 0
 
+
+# ── the proven-delta cap ────────────────────────────────────────────────────────────
+# THE HARD LOCK OF 2026-08-04 18:49. At 900 mV: base 2002, best proven delta +435, so the
+# prediction was 2437 MHz — below the entire clock list (floor 2700). snap_to correctly
+# returned empty, and `START=${PRED:-$CEILING}` then reached for the CEILING: 3100 MHz,
+# a delta of +1098 where +435 was the most ever proven. gpu-flatten.sh refused that one
+# (its own +/-1000 cap), the refusal was misread as a rung failure, and the descend path
+# found the first clock the cap would ACCEPT — 3000 MHz, delta +998. The machine died.
+#
+# The lesson pinned here: a prediction below the clock list is an ANSWER ("this anchor
+# cannot reach the floor"), not a missing value to paper over with the most aggressive
+# rung available. And "the flatten accepted it" is not evidence of safety.
+echo
+echo "=== proven-delta cap (the 18:49 hard lock) ==="
+
+plan() {   # base max_delta clock_list floor ceiling -> what the sweep would attempt
+  local BASE=$1 MAX_DELTA=$2 CLOCK_LIST=$3 FLOOR=$4 CEILING=$5 STEP PRED DELTA_CAP START
+  snap_to() { echo "$CLOCK_LIST" | tr ' ' '\n' | sort -rn | awk -v t="$1" '$1<=t{print; exit}'; }
+  STEP=$(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk 'NR>1{d=$1-p; if(!m||d<m)m=d} {p=$1} END{print (m?m:100)}')
+  DELTA_CAP=0
+  if [ "$BASE" -gt 0 ] && [ "$MAX_DELTA" -gt 0 ]; then
+    DELTA_CAP=$(( BASE + MAX_DELTA + STEP ))
+    PRED=$(snap_to $(( BASE + MAX_DELTA )))
+    if [ "$DELTA_CAP" -lt "$FLOOR" ]; then echo "SKIP-ANCHOR"; return; fi
+  fi
+  START=${PRED:-$CEILING}
+  if [ "$DELTA_CAP" -gt 0 ] && [ "$START" -gt "$DELTA_CAP" ]; then
+    START=$(snap_to "$DELTA_CAP"); [ -n "$START" ] || { echo "SKIP-ANCHOR"; return; }
+  fi
+  echo "$START"
+}
+pcase() {   # name expected base delta clocks floor ceiling
+  local name=$1 expect=$2; shift 2
+  local got; got=$(plan "$@")
+  if [ "$got" = "$expect" ]; then printf '  ✅ %-34s %s\n' "$name" "$got"; PASS=$((PASS+1))
+  else printf '  ❌ %-34s got %s, expected %s\n' "$name" "$got" "$expect"; FAIL=$((FAIL+1)); fi
+}
+
+# the exact crash: must refuse the anchor outright, not reach for the ceiling
+pcase "900mV/435 delta (the real crash)" SKIP-ANCHOR 2002 435 "2700 2800 2900 3000 3100" 2700 3100
+# a prediction inside the list: use it, unchanged
+pcase "950mV — prediction in range"      3000        2580 435 "2700 2800 2900 3000 3100" 2700 3100
+# A prediction inside the list is USED as-is; the cap only binds when it is not.
+pcase "prediction wins over the cap"     2700        2300 435 "2700 2800 2900 3000 3100" 2700 3100
+# The reduction path: prediction falls below the list, but the cap still clears the floor,
+# so the ceiling must be pulled DOWN to the cap instead of used raw. This is the exact
+# shape of the crash, one step less severe — the case where the anchor is still viable.
+pcase "ceiling above cap is reduced"     2700        2250 400 "2700 2800 2900 3000 3100" 2700 3100
+# no delta knowledge yet (first anchor): ceiling is the only guide, cap inactive
+pcase "no proven delta -> ceiling"       3100        2002 0   "2700 2800 2900 3000 3100" 2700 3100
+
 echo
 if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi

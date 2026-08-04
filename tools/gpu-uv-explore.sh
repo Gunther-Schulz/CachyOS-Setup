@@ -538,11 +538,44 @@ for mv in $ANCHORS; do
     # previous anchor's absolute clock — at a lower anchor the same clock is a much
     # bigger ask, so the naive start is usually several doomed rungs above the answer.
     BASE=$(base_at "$mv")
+
+    # ── DELTA CEILING: never ask for more than one step beyond what has been PROVEN ────
+    #
+    # This guard exists because its absence hard-locked the machine on 2026-08-04.
+    # At 900 mV: base 2002, best proven delta +435, so the prediction was 2437 MHz — BELOW
+    # the whole clock list (floor 2700). snap_to correctly returned EMPTY, and the old
+    # fallback `START=${PRED:-$CEILING}` then reached for the CEILING, 3100 MHz: a delta of
+    # +1098 where +435 was the most ever proven. The flatten refused that one (its own
+    # ±1000 cap), which was reported as a rung "failure", so the descend path tried 3000 —
+    # delta +998, just under the cap, applied, and the machine died.
+    #
+    # The prediction being below the list is not a missing answer, it is an ANSWER: this
+    # anchor cannot reach the floor clock. Falling back to the most aggressive rung when
+    # the evidence says "too low" is backwards, and it is how a sweep finds a limit by
+    # crashing rather than by predicting.
+    STEP=$(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk 'NR>1{d=$1-p; if(!m||d<m)m=d} {p=$1} END{print (m?m:100)}')
+    DELTA_CAP=0
     if [ "${BASE:-0}" -gt 0 ] && [ "${MAX_DELTA:-0}" -gt 0 ]; then
+      DELTA_CAP=$(( BASE + MAX_DELTA + STEP ))
       PRED=$(snap_to $(( BASE + MAX_DELTA )))
       say "  predicted start ${PRED:-none} MHz  (base ${BASE} + best delta ${MAX_DELTA})"
+      say "  hard cap ${DELTA_CAP} MHz  (one ${STEP} MHz step past the proven delta)"
+      if [ "$DELTA_CAP" -lt "$FLOOR" ]; then
+        say "  ${mv} mV cannot reach the floor ${FLOOR} MHz without asking more than the"
+        say "  silicon has ever proven (+${MAX_DELTA}). That is this anchor's answer — it is"
+        say "  too low. Ending the sweep rather than crashing to confirm it."
+        break
+      fi
     fi
+
+    # Prefer the prediction; fall back to the CEILING only when it is not already past the
+    # cap. Never start above the cap.
     START=${PRED:-$CEILING}
+    if [ "$DELTA_CAP" -gt 0 ] && [ "$START" -gt "$DELTA_CAP" ]; then
+      START=$(snap_to "$DELTA_CAP")
+      [ -n "$START" ] || { say "  no clock in the list is within the proven delta — skipping ${mv} mV"; continue; }
+      say "  start reduced to ${START} MHz by the proven-delta cap"
+    fi
 
     # Try the prediction, then move in whichever direction the result points. Climbing
     # after a pass is the safeguard: if delta does NOT govern, the prediction starts too
@@ -563,8 +596,10 @@ for mv in $ANCHORS; do
       # passed the prediction — climb to make sure we are not leaving clock on the table
       for mhz in $(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk -v s="$START" '$1>s'); do
         grep -qF "${mv}mV/${mhz}	FINISHED" "$STATE" 2>/dev/null && continue
+        if [ "$DELTA_CAP" -gt 0 ] && [ "$mhz" -gt "$DELTA_CAP" ]; then
+          say "  stopping the climb at ${mhz} MHz — past the proven-delta cap ${DELTA_CAP}"; break; fi
         say "  climbing to ${mhz} MHz ..."
-        "$FLATTEN" --mv "$mv" --mhz "$mhz" >/dev/null 2>&1 || continue
+        "$FLATTEN" --mv "$mv" --mhz "$mhz" >/dev/null 2>&1 || { say "    flatten refused (delta out of range) — NOT a rung failure"; continue; }
         if run_rung "${mv}mV/${mhz}"; then say "    ✓ passed"; BEST_AT_ANCHOR=$mhz
         else say "    ✗ failed — anchor maximum ${BEST_AT_ANCHOR}"; break; fi
         "$NVCURVE" write --reset >/dev/null 2>&1
@@ -573,8 +608,14 @@ for mv in $ANCHORS; do
       # failed the prediction — descend to the first pass
       for mhz in $(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -rn | awk -v s="$START" '$1<s'); do
         grep -qF "${mv}mV/${mhz}	FINISHED" "$STATE" 2>/dev/null && continue
+        # The descend path is where the 2026-08-04 hard lock happened: START had been
+        # wrongly set to the CEILING, its flatten was refused as out-of-range, and the
+        # descent then found the first clock the ±1000 cap would ACCEPT — +998 MHz, more
+        # than twice anything proven. "The flatten accepted it" is not evidence of safety.
+        if [ "$DELTA_CAP" -gt 0 ] && [ "$mhz" -gt "$DELTA_CAP" ]; then
+          say "  skipping ${mhz} MHz — past the proven-delta cap ${DELTA_CAP}"; continue; fi
         say "  descending to ${mhz} MHz ..."
-        "$FLATTEN" --mv "$mv" --mhz "$mhz" >/dev/null 2>&1 || continue
+        "$FLATTEN" --mv "$mv" --mhz "$mhz" >/dev/null 2>&1 || { say "    flatten refused (delta out of range) — NOT a rung failure"; continue; }
         if run_rung "${mv}mV/${mhz}"; then say "    ✓ passed — anchor maximum ${mhz}"; BEST_AT_ANCHOR=$mhz; break
         else say "    ✗ failed — stepping down"; fi
         "$NVCURVE" write --reset >/dev/null 2>&1
