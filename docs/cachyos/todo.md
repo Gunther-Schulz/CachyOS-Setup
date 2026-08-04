@@ -171,7 +171,47 @@
 
   **⚠️ Session is Wayland, and that matters.** `XDG_SESSION_TYPE=wayland`, GNOME, and **no `CoolBits` anywhere in `/etc/X11/`**. The classic `nvidia-settings` offset route traditionally needs X11 with CoolBits enabled, so it is questionable on this machine — the read-only query worked, but a *write* is untested and may simply fail. NVCurve goes through NVML/NvAPI and needs no X server at all, which is an independent reason to prefer it here.
 
-  **Phase 2 (not now):** pick a voltage point, raise its frequency to the target clock, flatten the points above it — the Afterburner undervolt workflow, which caps the card at that voltage while leaving lower points untouched so **idle behaviour is preserved**. Validate per [nvidia/5090-thermals.md](nvidia/5090-thermals.md) — GPU undervolt instability appears **under load, not at idle**, so it is deterministically testable: run the load, watch for artifacts and `journalctl -b | grep -i xid`.
+  ---
+
+  ## Phase 2 — TUNE WITHOUT PERSISTING (operator decision 2026-08-04)
+
+  **Deliberately runtime-only until proven.** Nothing survives a reboot, so the worst case is "power-cycle and it's stock again". Verified 2026-08-04: **no `nvcurve` systemd unit exists and no autoload profile is set**, and `nvcurve` writes a snapshot to `/var/cache/nvcurve/snapshots/` before every write. Persistence is a *separate, later* step (`nvcurve service install`) taken only once a setting has proven stable.
+
+  **The edit.** A **global positive offset** shifts the whole V/F curve along the frequency axis, so every voltage point yields more clock. That is the undervolt in both directions at once: the target clock now arrives at a *lower* voltage, and the **1.075 V ceiling this card actually operates at** delivers more. Every write command accepts `--dry-run`.
+
+  ```fish
+  sudo ~/.local/bin/nvcurve write --global --delta 50 --dry-run
+  sudo ~/.local/bin/nvcurve write --global --delta 50
+  sudo ~/.local/bin/nvcurve read | head -20        # confirm the offsets landed
+  ```
+  **Step +50 → +100 → +150**, re-testing at each step. Revert instantly with `sudo ~/.local/bin/nvcurve write --reset`, or reboot.
+
+  ### Three tools, each for what it is actually good at — run in this order
+
+  | Tool | Power reached | What it detects |
+  |---|---|---|
+  | **`gpu_burn`** | **575 W, capped** | **silent compute errors** — prints `GPU 0: OK` or `FAULTY`. **The gate.** |
+  | **FurMark Vulkan** | **565 W, capped** | visual artifacts, and it renders to screen so it can be watched |
+  | GravityMark RT | **not capped** (~338 W in raster) | performance score against the 78 906 baseline |
+
+  ```fish
+  gpu_burn 300                                                    # must end "GPU 0: OK"
+  furmark --demo furmark-vk --width 2560 --height 1440 --max-time 180
+  sudo ./tools/gpu-thermal.sh uv-plus50 -l none -t 300            # then GravityMark RT, 2K/200K
+  journalctl -b | grep -i xid                                     # must be empty
+  ```
+
+  **⚠️ `gpu_burn` runs FIRST because it is the only one that catches silent wrongness.** Marginal voltage produces incorrect arithmetic *before* it produces anything visible — a run that looks clean in FurMark while `gpu_burn` reports `FAULTY` means the card is quietly corrupting results, which is the failure mode that would ruin real work later. Artifact-watching cannot see that.
+
+  **⚠️ GravityMark alone is not a stability test.** It never approaches the power limit (338 W of 575 in rasterization) because it is geometry-bound, not power-bound. It scores well and runs cool — useful for measuring gain, useless for finding instability.
+
+  **Read power, not only score.** A genuine undervolt shows **the same or better score at LOWER power**. If power rises with the score, that is an overclock rather than an undervolt — still a legitimate outcome, but it costs heat, and on this card heat costs 2.5 MHz/°C back.
+
+  **Failure signature:** `FAULTY`, a visual artifact, or any `Xid` in the journal → back off one step. Instability appears **under load, not at idle** ([nvidia/5090-thermals.md](nvidia/5090-thermals.md)), which is what makes this deterministically testable rather than a wait-and-see.
+
+  **Persist only after a step survives all three**, and record which offset was proven before installing the service.
+
+  **Later refinement:** the global offset is the blunt instrument. The precise undervolt — pick a voltage point, raise its frequency, flatten the points above so the card never exceeds that voltage — needs the web UI's flatten tool, and preserves idle behaviour by leaving the low points untouched. Worth doing once these steps have established how much headroom the silicon has.
 
 - **Desktop — READY: tie case fans to GPU temperature as well as CPU (operator wants to explore this, 2026-08-04).**
 
