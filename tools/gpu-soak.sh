@@ -35,12 +35,17 @@
 #   ./tools/gpu-soak.sh --passes 40              # ~110 min
 #   sudo ./tools/gpu-soak.sh --offset 250        # apply offset, soak, restore on exit
 #   ./tools/gpu-soak.sh --asteroids 500000       # heavier scene
+#   ./tools/gpu-soak.sh --screen 1               # BEST: fullscreen on a second monitor,
+#                                                # full load, primary display stays free
 #   ./tools/gpu-soak.sh --windowed --width 1280 --height 720
-#                                                # small window — keep using the machine
+#                                                # fallback on a single monitor
 #
-# NOTE ON WINDOWED RUNS: a smaller window is a LIGHTER load, so a setting that survives
-# 1280x720 windowed has NOT been proven at 2560x1440 fullscreen. Use windowed to keep
-# working; use fullscreen at native resolution for the run that decides.
+# KEEPING THE MACHINE USABLE. Two ways, and they are not equivalent:
+#   --screen N  puts the FULLSCREEN load on another monitor. If that monitor matches the
+#               primary's resolution (both 2560x1440 here) the load is IDENTICAL — this
+#               costs nothing and is the right choice.
+#   --windowed  shrinks the render target, which is a LIGHTER load. A setting surviving
+#               1280x720 windowed is NOT proven at 2560x1440. Fallback only.
 #
 # Each GravityMark pass is ~167 s, so passes x 3 min is roughly the wall-clock time.
 
@@ -53,6 +58,7 @@ WIDTH=2560
 HEIGHT=1440
 OFFSET=""
 FULLSCREEN=1     # --windowed drops this so the machine stays usable on one monitor
+SCREEN=0         # --screen N puts the fullscreen load on a SECOND monitor
 
 usage() { sed -n '2,32p' "$0"; exit "${1:-0}"; }
 
@@ -64,6 +70,7 @@ while [ $# -gt 0 ]; do
     --height) HEIGHT=$2; shift 2 ;;
     --offset) OFFSET=$2; shift 2 ;;
     --windowed) FULLSCREEN=0; shift ;;
+    --screen) SCREEN=$2; shift 2 ;;
     -h|--help) usage 0 ;;
     *) echo "unknown option: $1" >&2; usage 1 ;;
   esac
@@ -111,6 +118,7 @@ START_MARK=$(date '+%Y-%m-%d %H:%M:%S')
 say "=== GPU stability soak — gaming clocks, unattended ==="
 say "passes:    $PASSES  (~$(( PASSES * 167 / 60 )) min)"
 say "scene:     ${WIDTH}x${HEIGHT}, ${ASTEROIDS} asteroids, Vulkan RT$([ "$FULLSCREEN" = 0 ] && echo ' (WINDOWED — lighter load than fullscreen)')"
+say "screen:    $SCREEN$([ "$SCREEN" != 0 ] && echo ' (secondary — primary display stays usable)')"
 say "offset:    ${OFFSET:-<current, unchanged>}"
 say "output:    $OUT"
 say ""
@@ -128,7 +136,12 @@ fi
 
 sampler "$OUT/sensors.txt" & SPID=$!
 
-say "starting $PASSES passes at $(date +%H:%M:%S) — leave the machine alone ..."
+if [ "$SCREEN" = 0 ] && [ "$FULLSCREEN" = 1 ]; then
+  say "starting $PASSES passes at $(date +%H:%M:%S) — this will take over your display."
+  say "  (a second monitor? use --screen 1 and keep working)"
+else
+  say "starting $PASSES passes at $(date +%H:%M:%S) ..."
+fi
 say ""
 
 # -count N runs N benchmark passes back to back; -close 1 exits when done.
@@ -137,12 +150,27 @@ say ""
 # libTellusim_x64.so sits beside the binary and is found via an empty rpath. Invoking
 # it by absolute path from anywhere else dies with "cannot open shared object file"
 # and exit 127, which is a LAUNCH failure and must never be read as instability.
-( cd "$(dirname "$GM")" && ./"$(basename "$GM")" \
-      -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen 0 \
-      -benchmark 1 -count "$PASSES" -close 1 \
-      -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT" \
-      -times "$OUT/frametimes.txt" ) >"$OUT/gravitymark.log" 2>&1
+# Run the BENCHMARK as the invoking user even when the script is root for the offset
+# write. As root it would get HOME=/root (wrong config and cache location) and would
+# need the user's X/Wayland authority to open a window at all. Only nvcurve needs root.
+GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen "$SCREEN"
+          -benchmark 1 -count "$PASSES" -close 1
+          -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT"
+          -times "$OUT/frametimes.txt" )
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  say "running the benchmark as $SUDO_USER (root would use the wrong HOME and display)"
+  ( cd "$(dirname "$GM")" && sudo -u "$SUDO_USER" \
+      DISPLAY="${DISPLAY:-:0}" \
+      WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+      XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" \
+      XAUTHORITY="${XAUTHORITY:-$home/.Xauthority}" \
+      HOME="$home" \
+      ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
+else
+  ( cd "$(dirname "$GM")" && ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
+fi
 GM_RC=$?
+chown -R "${SUDO_USER:-$USER}" "$OUT" 2>/dev/null
 
 kill "$SPID" 2>/dev/null
 
