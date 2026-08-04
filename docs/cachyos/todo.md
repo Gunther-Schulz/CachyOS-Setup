@@ -173,6 +173,66 @@
 
   ---
 
+  ## ⭐ CURRENT STRATEGY (2026-08-04) — flatten, not global offset
+
+  **The setting is a PAIR: (anchor voltage, target clock).** Everything below follows from
+  that, and the earlier approaches failed because each froze one axis at a guessed value.
+
+  **What a flatten does.** Pick an anchor voltage, set the frequency there, pin every
+  higher-voltage point to that same frequency. The card then gains nothing by raising
+  voltage past the anchor, so it stops — the curve becomes a **voltage ceiling**. Points
+  below the anchor are untouched, so idle behaviour survives. Algorithm taken from
+  NVCurve's own `frontend/src/store/curveStore.ts` (`flattenToAnchor`), not invented:
+  `delta[i] = targetFreq − point[i].freq`, which makes the deltas above the anchor
+  **negative**. Implemented in [`tools/gpu-flatten.sh`](../../tools/gpu-flatten.sh).
+
+  **Why not a global offset.** It raises the *top* of the curve too — which is exactly
+  what hung at +400 (top point pushed to 3 580 MHz @ 1 240 mV). A flatten caps that
+  region instead, so it is never entered. The offset path is also strictly worse for the
+  same clock, because it leaves the card running at 1.075 V.
+
+  **The two steps, and why they are separate:**
+  1. **Lower the voltage ceiling** — the undervolt itself. Measured: stock 1.075 V →
+     anchor 1.000 V took power from **371 W to 318 W (−14 %)** but cost **126 MHz**
+     (2 803 → 2 677).
+  2. **Raise the target clock at that voltage** — recover the loss and ideally beat stock.
+     This is what [`tools/gpu-clock-ladder.sh`](../../tools/gpu-clock-ladder.sh) walks.
+
+  **Why the anchor is fixed at 1 000 mV first, not the 900 mV forum users run.** 1.000 V
+  is *proven* on this card — NVVDD was watched sitting there rock-steady through a full
+  soak, never creeping toward the 1.075 V stock uses. Jumping straight to 900 mV makes a
+  failure uninterpretable: was it the voltage, or the clock demanded at that voltage?
+  Characterise one axis at a known-good anchor, then step the anchor down informed.
+
+  **The "both behaviours" property is automatic and needs no optimum.** A voltage ceiling
+  means power-capped work spends the freed headroom on **clock**, and unconstrained work
+  spends it on **less power** — the card decides per workload. Corroborated by a forum
+  report on the same GPU: +7.2 % score at unchanged 575 W in a power-capped benchmark,
+  and lower temps and power in gaming below the cap, from one setting. **So the
+  two-profile scheme (`quiet` / `performance`) is more than is needed** — one good
+  flatten covers both.
+
+  **Success criterion for the running ladder:** the first target whose *delivered* clock
+  beats stock **2 803 MHz** while power stays near **318 W**. That is faster than stock on
+  75 mV less. Expect ~120 MHz of boost derating between target and delivered — seen at
+  stock too (2 803 delivered against a curve value of 2 917), so it is not a flatten
+  defect.
+
+  ⚠️ **This finds the best clock at ONE anchor, not a global optimum.** The full surface
+  is anchor × clock. If a rung ≥2 900 MHz passes, stop — that is already the win, and
+  chasing the true optimum means re-laddering at 950 and 900 mV for perhaps another 5 %
+  power.
+
+  **Tooling, in the order it is used:**
+  | Tool | Job |
+  |---|---|
+  | [`gpu-flatten.sh`](../../tools/gpu-flatten.sh) | apply one (anchor, clock) pair |
+  | [`gpu-soak.sh`](../../tools/gpu-soak.sh) | validate one setting at gaming clocks |
+  | [`gpu-clock-ladder.sh`](../../tools/gpu-clock-ladder.sh) | **the current run** — baseline, then clock ladder at a fixed anchor |
+  | [`gpu-ladder-report.sh`](../../tools/gpu-ladder-report.sh) | one comparison table, safe mid-run |
+  | [`gpu-uv-ladder.sh`](../../tools/gpu-uv-ladder.sh) | superseded — global-offset path |
+  | [`gpu-flatten-ladder.sh`](../../tools/gpu-flatten-ladder.sh) | superseded — walks the anchor with clock frozen at stock |
+
   ## Phase 2 — TUNE WITHOUT PERSISTING (operator decision 2026-08-04)
 
   **Deliberately runtime-only until proven.** Nothing survives a reboot, so the worst case is "power-cycle and it's stock again". Verified 2026-08-04: **no `nvcurve` systemd unit exists and no autoload profile is set**, and `nvcurve` writes a snapshot to `/var/cache/nvcurve/snapshots/` before every write. Persistence is a *separate, later* step (`nvcurve service install`) taken only once a setting has proven stable.
