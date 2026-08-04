@@ -69,49 +69,74 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 FLATTEN="$HERE/gpu-flatten.sh"; SOAK="$HERE/gpu-soak.sh"
 [ -x "$FLATTEN" ] && [ -x "$SOAK" ] || { echo "gpu-flatten.sh / gpu-soak.sh missing" >&2; exit 1; }
 NVCURVE="$home/.local/bin/nvcurve"
-STATE="${home}/bench/explore-state.tsv"
-mkdir -p "$(dirname "$STATE")"
-say() { echo "$*" | tee -a "${STATE%.tsv}.log"; sync; }
+STATE_DIR="${home}/bench"
+mkdir -p "$STATE_DIR"
+LATEST="$STATE_DIR/explore-latest.tsv"
+
+# A run is UNFINISHED unless it wrote its completion marker. Checking for that is more
+# honest than inferring from the last line — a run killed between rungs looks tidy.
+unfinished() { [ -f "$1" ] && ! grep -q '^SWEEP\tCOMPLETE' "$1"; }
+newest_unfinished() {
+  local f
+  for f in $(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null); do
+    [ "$f" = "$LATEST" ] && continue
+    unfinished "$f" && { echo "$f"; return; }
+  done
+}
+
+PRIOR=$(newest_unfinished)
 
 # ── --status: report only, change nothing ───────────────────────────────────────────
 if [ "$STATUS" = 1 ]; then
-  [ -f "$STATE" ] || { echo "no state file at $STATE" >&2; exit 1; }
-  HUNG=$(awk -F'\t' '$2=="STARTED"{s=$1} $2=="FINISHED"{if($1==s) s=""} END{print s}' "$STATE")
-  [ -n "$HUNG" ] && echo "❌ ${HUNG} was STARTED but never finished — it hung the machine."
-  echo "Completed pairs:"
-  awk -F'\t' '$2=="FINISHED" && $1!="stock"{printf "  %-16s %s\n", $1, $3}' "$STATE"
-  echo; exec "$HERE/gpu-ladder-report.sh" --state "$STATE"
+  STATE=${STATE:-${PRIOR:-$(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null | grep -v latest | head -1)}}
+  [ -f "$STATE" ] || { echo "no run found in $STATE_DIR" >&2; exit 1; }
+  echo "run: $STATE"; echo
+  exec "$HERE/gpu-ladder-report.sh" --state "$STATE"
 fi
 
-# ── --resume: CONTINUE where it stopped, re-running nothing already decided ──────────
-# Ctrl-C is a safe pause: every verdict is appended and synced before the next rung
-# starts, so the only work ever lost is the rung that was in flight.
 BASE_DONE=0
 declare -A ANCHOR_MAX ANCHOR_DONE
+
 if [ "$RESUME" = 1 ]; then
-  [ -f "$STATE" ] || { echo "no state file at $STATE — nothing to resume" >&2; exit 1; }
+  STATE=$PRIOR
+  [ -n "$STATE" ] || { echo "no unfinished run to resume in $STATE_DIR" >&2; exit 1; }
+  echo "resuming: $STATE"
+elif [ -n "$PRIOR" ]; then
+  # Running fresh over an unfinished run would DESTROY it. Ask, rather than assume.
+  echo "⚠️  An unfinished run exists:"
+  echo "     $PRIOR"
+  "$HERE/gpu-ladder-report.sh" --state "$PRIOR" 2>/dev/null | head -8 | sed 's/^/     /'
+  echo
+  echo "  [r] resume it   [n] start a NEW run (the old one is kept, not deleted)   [a] abort"
+  printf '  choice: '
+  read -r choice < /dev/tty
+  case "${choice:-a}" in
+    r|R) RESUME=1; STATE=$PRIOR; echo "  resuming $STATE" ;;
+    n|N) STATE="$STATE_DIR/explore-$(date +%Y%m%d-%H%M%S).tsv"; echo "  new run: $STATE" ;;
+    *)   echo "  aborted — nothing changed."; exit 0 ;;
+  esac
+else
+  STATE="$STATE_DIR/explore-$(date +%Y%m%d-%H%M%S).tsv"
+fi
+
+ln -sfn "$STATE" "$LATEST"
+say() { echo "$*" | tee -a "${STATE%.tsv}.log"; sync; }
+
+if [ "$RESUME" = 1 ]; then
   while IFS=$'|' read -r label verdict; do
     [ "$label" = "stock" ] && { [ "$verdict" = "PASS" ] && BASE_DONE=1; continue; }
     mv=${label%%mV/*}; mhz=${label##*/}
     if [ "$verdict" = "PASS" ]; then
-      # keep the highest clock that passed at this anchor
-      cur=${ANCHOR_MAX[$mv]:-0}
-      [ "$mhz" -gt "$cur" ] && ANCHOR_MAX[$mv]=$mhz
-    elif [ "$verdict" = "FAIL" ]; then
-      # a failure bounds this anchor: climbing stops, descending has its answer
-      ANCHOR_DONE[$mv]=1
-    fi
+      cur=${ANCHOR_MAX[$mv]:-0}; [ "$mhz" -gt "$cur" ] && ANCHOR_MAX[$mv]=$mhz
+    elif [ "$verdict" = "FAIL" ]; then ANCHOR_DONE[$mv]=1; fi
   done < <(awk -F'\t' '$2=="FINISHED"{print $1"|"$3}' "$STATE")
-
   HUNG=$(awk -F'\t' '$2=="STARTED"{s=$1} $2=="FINISHED"{if($1==s) s=""} END{print s}' "$STATE")
   if [ -n "$HUNG" ]; then
     mv=${HUNG%%mV/*}
-    echo "NOTE: ${HUNG} was interrupted or hung — treating it as unproven and re-running it."
+    echo "NOTE: ${HUNG} was interrupted — unproven, will be re-run."
     [ "$HUNG" != "stock" ] && unset 'ANCHOR_DONE[$mv]'
   fi
-  echo "resuming: baseline=$( [ "$BASE_DONE" = 1 ] && echo done || echo pending )  anchors already bounded: ${!ANCHOR_DONE[*]:-none}"
-else
-  : > "$STATE"
+  echo "  baseline=$( [ "$BASE_DONE" = 1 ] && echo done || echo pending)  bounded anchors: ${!ANCHOR_DONE[*]:-none}"
 fi
 
 cleanup() { [ -x "$NVCURVE" ] && "$NVCURVE" write --reset >/dev/null 2>&1; echo "curve reset to stock."; }
@@ -443,4 +468,6 @@ say ""
 say "The confirmed pair above is the one to keep — the back-off rung has already been"
 say "applied and soaked, so no further adjustment is needed."
 say ""
+printf 'SWEEP\tCOMPLETE\t\t%s\n' "$(date -Is)" >> "$STATE"; sync
 say "Curve reset to stock. Nothing persists across a reboot."
+say "This run: $STATE"
