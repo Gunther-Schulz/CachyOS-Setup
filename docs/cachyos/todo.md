@@ -132,15 +132,19 @@
 - **Both machines — `fwupdmgr` cadence + one pending item.** `sudo fwupdmgr refresh && sudo fwupdmgr get-updates` is read-only (metadata download + listing; `fwupdmgr update` is the part that flashes) — safe to run monthly or before/after a BIOS change. Desktop as of 2026-08-03: 11 devices updatable, no SSD or System Firmware releases, one **pending** — UEFI dbx `20250902 → 20260402`, urgency High, CVE-2026-8863. **Secure Boot is disabled on the desktop** (`bootctl status`, 2026-08-03) — so the revocation list is not consulted at boot: the update is inert *and* riskless here. The brick scenario (a dbx revoking the running bootloader's signature) requires Secure Boot enabled; it does not apply. Apply it anyway when convenient — `sudo fwupdmgr update`, needs a reboot — because it clears the only pending entry, which keeps future `get-updates` output signal rather than noise, and pre-positions the machine if Secure Boot is ever turned on. `mokutil` is not installed; use `bootctl status | grep -i "secure boot"`.
 - **Desktop — PARKED: one recent freeze, cause unknown.** Deliberately not diagnosed yet (operator: track it, don't investigate now). **Still open as candidate causes, none re-verified:** ⚠️ **NVIDIA GSP-RM heartbeat timeout on S3 resume** ([issues/known-issues.md](issues/known-issues.md)) — the strongest lead by symptom match: documented on this exact GPU, freezes ~1 s after wake, requires a hard power cycle, and is recorded as having **no confirmed workaround**. Written against driver 595.45.04; the machine now runs 610.43.03 and it has not been re-tested — so it is neither known-broken nor known-fixed. Also: spd5118 suspend abort ([system/sleep.md](system/sleep.md)), RTX 5090 + IOMMU ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)), GPU hang (`tools/gpu-hang-watch.sh` — written for Marvel Rivals specifically, so its Xid watch is narrower than "any freeze"). Each has a fix documented as applied; whether it still fires is unchecked, and "documented as applied" is not the same as "verified working" — the doc says what was done, the machine says what happens. Missing evidence to unpark: the journal around the event — `journalctl -k -b -1 -e` (or `-b -2`) run soon after, plus what the machine was doing (idle/sleep, gaming, desktop). Journald persistence is **confirmed on** (`/var/log/journal/` exists with a machine-id dir, 2026-08-03), so a hard power-cycle still leaves the previous boot readable via `-b -1` — the evidence survives the freeze. Also worth knowing before testing: the active sleep mode is **`deep` (S3)**, not s2idle (`/sys/power/mem_sleep` → `s2idle [deep]`), i.e. exactly the mode with the documented hard-lock. Does **not** implicate the drives — SMART clean on all three (above).
 
-  **🔎 NEW LEAD 2026-08-04 — PCIe Gen 5 NVMe link/ASPM instability, and it matches better than anything else on this list.** An ASUS ROG forum bug report on **the same CPU** (9950X3D, board X870E-H) describes **system freezes at idle / low load**; a follow-up from the reporter (2026-04-18) identifies the root cause as **PCIe Gen 5 NVMe link + ASPM instability, not the BIOS or AGESA** — freezes "drastically reduced but not eliminated" after forcing the drive to Gen 4. Threads: [initial](https://rog-forum.asus.com/t5/amd-800-series/bug-report-system-freezes-at-idle-low-load-asus-x870e-h-ryzen-9/td-p/1141620), [root cause](https://rog-forum.asus.com/t5/amd-800-series/update-x870e-h-9950x3d-idle-freeze-pcie-gen-5-nvme-root-cause/td-p/1146380). Different board, so relevance is inferential — but **this machine has the matching hardware, confirmed 2026-08-04:**
+  **✅ THE MISSING EVIDENCE, SUPPLIED BY THE OPERATOR 2026-08-04: the freeze happened under GPU LOAD.** Not at idle, not on resume. This was the field listed above as unknown, and it re-ranks the whole candidate list:
 
-  | Device | Model | Link |
+  | Candidate | Symptom it explains | Verdict against GPU-load |
   |---|---|---|
-  | `nvme0` | Samsung SSD 990 PRO 4TB | 16.0 GT/s ×4 (Gen 4) |
-  | `nvme1` | Samsung SSD 990 PRO 2TB | 16.0 GT/s ×4 (Gen 4) |
-  | **`nvme2`** | **Samsung SSD 9100 PRO 4TB** | **32.0 GT/s ×4 — Gen 5** |
+  | **GPU hang / Xid** (`tools/gpu-hang-watch.sh`) | freeze under sustained GPU load | **← now the leading candidate** |
+  | **RTX 5090 + IOMMU** ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)) | DMA faults under load | **plausible, keep** |
+  | NVIDIA GSP-RM heartbeat | freeze ~1 s after **S3 resume** | demoted — wrong trigger |
+  | spd5118 suspend abort | suspend path only | demoted — wrong trigger |
+  | PCIe Gen 5 NVMe ASPM | freeze at **idle / low load** | demoted — wrong trigger (see below) |
 
-  ASPM policy is `[default]` (`/sys/module/pcie_aspm/parameters/policy`). Why this lead outranks the others: it matches the symptom (freeze at **idle**, not under load or on resume) where the GSP-RM lead matches only S3 resume, and it matches the CPU exactly. **Cheap falsification test, no hardware change:** boot with `pcie_aspm=off` on the kernel cmdline and see whether idle freezes stop. If they do, the permanent fix is either forcing `nvme2` to Gen 4 in the BIOS or a per-device ASPM disable — and that turns a parked mystery into a settled one. **Do not run this test during EXPO/CO validation** — it adds a variable to a window whose whole purpose is attribution.
+  **Next evidence to collect** (unchanged in kind, now much better targeted): `journalctl -k -b -1 -e` after the next freeze, grepping for `Xid` — an Xid number names the failure class directly. `tools/gpu-hang-watch.sh` already exists but was written for Marvel Rivals specifically, so its watch is narrower than "any GPU-load freeze"; widen it before relying on it.
+
+  **⚠️ Correction, 2026-08-04.** This entry previously carried a PCIe Gen 5 NVMe/ASPM lead, described as matching "better than anything else on this list" because the forum report it came from was titled *freezes at idle / low load*. **That symptom was the forum thread's, never this machine's** — the "what was the machine doing" field was recorded right here as missing evidence, and the lead was written as though it had been answered. A candidate's own symptom is not evidence about the case it is being matched to. Retained only as a hardware note, since the matching hardware is genuinely present and it may matter later if an **idle** freeze ever does occur: `nvme2` (Samsung 9100 PRO 4TB) links at **32.0 GT/s ×4 (Gen 5)** while `nvme0`/`nvme1` (990 PRO) run Gen 4; ASPM policy is `[default]`. Sources: [initial](https://rog-forum.asus.com/t5/amd-800-series/bug-report-system-freezes-at-idle-low-load-asus-x870e-h-ryzen-9/td-p/1141620), [root cause](https://rog-forum.asus.com/t5/amd-800-series/update-x870e-h-9950x3d-idle-freeze-pcie-gen-5-nvme-root-cause/td-p/1146380).
 - **Desktop — NEXT BIOS VISIT: ordered checklist.** Already verified from Linux, do **not** change: **Resizable BAR ON** (`nvidia-smi` BAR1 = 32768 MiB ≈ full VRAM; 256 MiB would mean off), **PCIe Gen 5 × 16** at max, `iommu=pt` on the cmdline ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)). So Above 4G Decoding / ReBAR are correct already.
 
   **✅ APPLIED 2026-08-04** — read off the *Save Changes & Reset* confirmation screen (photographed), which is the authoritative diff of the visit:
@@ -197,13 +201,22 @@
      - **MCE lane — live.** `journalctl -k` shows `MCE: In-kernel MCE decoding enabled` and `RAS: Correctable Errors collector initialized`. "No MCE errors" is a real negative.
      - **Memory/EDAC lane — DEAD.** `/sys/devices/system/edac/mc/` contains **no `mc0`**, i.e. no memory controller is registered. `amd64_edac` exists as a module (`/lib/modules/7.1.5-1-cachyos/kernel/drivers/edac/amd64_edac.ko.zst`) but is **not loaded** — `lsmod` shows nothing matching `edac`. So "No Memory errors" is what a dead lane returns, indistinguishable from a true absence.
 
-     This is the classic unproven-checker shape: the watch was installed as the safety net for EXPO validation and CO stability, and half of it reports clean because nothing is wired to it. **Fix before trusting the EXPO/CO results:**
-     ```fish
-     sudo modprobe amd64_edac
-     ls /sys/devices/system/edac/mc/          # must now show mc0
-     sudo ras-mc-ctl --status
+     **Resolved 2026-08-04: the EDAC lane is permanently unavailable on this machine. Do not re-try it.**
      ```
-     If `mc0` appears, persist it with `/etc/modules-load.d/`. If the modprobe fails, that is itself the answer — Zen 5 (family 1Ah) memory-controller support may not be in this kernel's `amd64_edac`, in which case **record that the EDAC lane is permanently unavailable here** so a future session does not read its silence as health. Either way the MCE lane still catches uncorrectable events, which is the one that matters most for CO instability.
+     $ sudo modprobe amd64_edac
+     modprobe: ERROR: could not insert 'amd64_edac': No such device
+     $ ls /sys/devices/system/edac/mc/     # power  subsystem  uevent — no mc0
+     ```
+     `No such device` is the driver reporting it found no memory controller it supports — not a missing module, not a misconfiguration. This CPU is **family 26 (0x1A = Zen 5, model 68)** per `/proc/cpuinfo`, and this kernel's `amd64_edac` does not claim its UMCs. Nothing to fix; the only action is to read the output correctly from now on.
+
+     **What this does and does not cost.** The `Memory errors` table in `ras-mc-ctl --errors` is dead here, so **its "No Memory errors" line carries no information — never quote it as evidence of health.** DRAM corrected errors on Zen are delivered as **MCA events from the UMC banks**, decoded in-kernel (`MCE: In-kernel MCE decoding enabled`) with `amd_atl` (present: `/lib/modules/…/drivers/ras/amd/atl/amd_atl.ko.zst`) translating a normalized address back to a DIMM — that path is independent of EDAC. So memory-error *detection* is expected to survive; what is lost is the per-DIMM EDAC table.
+
+     ⚠️ **That last paragraph is reasoning, not a measurement — the MCE lane has not been shown live on a real error.** Confirm the shape of the instrument before trusting it:
+     ```fish
+     sudo ras-mc-ctl --summary
+     sudo ras-mc-ctl --errors | head -40
+     ```
+     Read which sections actually exist and are populated. An empty `mce_record` table is still an unproven negative, but a *present* one at least proves the lane is wired.
 
   **C — CPU tuning. Paths, per the ASUS 800-series BIOS manual (E25269):**
   - **Curve Optimizer — path CONFIRMED from the live screen 2026-08-04** (photographed), not from the manual: `Advanced → AMD Overclocking → AMD Overclocking → Precision Boost Overdrive → Curve Optimizer`. Note `AMD Overclocking` appears **twice** in the breadcrumb; that is the real path.
