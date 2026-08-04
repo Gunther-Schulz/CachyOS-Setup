@@ -397,6 +397,29 @@ leaderboard systems ran **the same 4K preset** and scored 50 % higher, so worklo
 is not the variable — the platform is. A heavier preset on the same handicapped path
 measures a different point on that path, not the card's ceiling.
 
+### ✅ The card is NOT the problem — Vulkan reaches the power cap
+
+FurMark 2.10.2 **Vulkan** mode (Vulkan 1.4.341), sampled live 2026-08-04:
+
+| | Superposition 4K (**OpenGL**) | FurMark (**Vulkan**) |
+|---|---|---|
+| power | 493 W mean — **not capped** | **565 W mean, 567 max — `SW Power Cap: Active`** |
+| SM clock | 2 665 MHz | **2 761 MHz** |
+| utilisation | 100 % | 99 % |
+| core temp | — | 76 °C (short run, not saturated) |
+
+**A graphics load CAN drive this card into its power limit.** So the 493 W under
+Superposition was the OpenGL path failing to extract full power from the GPU, not the
+card's ceiling — exactly what the operator suspected, and the reason "100 % utilisation"
+was a worthless indicator. Same card, 72 W and ~100 MHz apart, one reading capped and
+one not.
+
+⚠️ **Not yet a clean API A/B.** FurMark-Vulkan vs Superposition-OpenGL differs in *both*
+workload and API — FurMark is a shader power-virus at 720p, Superposition a rendered
+scene at 4K. **The controlled comparison is FurMark OpenGL vs FurMark Vulkan**, same
+tool and scene, API as the only variable. That run is what would attribute the
+Superposition score deficit to the OpenGL path rather than to something else.
+
 ### Methodology: a benchmark without a comparison corpus is a number, not a measurement
 
 The 33 % deficit was only visible because a leaderboard existed. **A score in isolation
