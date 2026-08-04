@@ -288,15 +288,36 @@
     for only **+20–30 W** total; he treats GDDR7 memory OC as near-free.
   - A Linux compute user runs **+4400 MT/s (≈+2200 in Afterburner units)** sustained.
 
-  ⚠️ **Judge it on delivered throughput, never on stability** — the same rule the core
-  ladder already runs on, for a stronger reason. GDDR7 error correction retries a failed
-  transfer instead of crashing, so a too-high memory offset shows up as **lower** tokens/s
-  or a lower score with **zero** crashes and zero artifacts. That is clock stretching's
-  exact shape one component over, and a stability soak cannot see it. Two contradictory
-  forum claims exist about where that turnover sits; neither is verified, so **measure it
-  here** rather than adopting a number. *Done when:* a memory-offset ladder measured with
-  `gpu-ab-compare.sh` (games) and a fixed inference/SDXL run (compute), with the winner
-  chosen by delivered work and `gpu_burn` clean for corruption.
+  ⚠️ **Judge it on delivered throughput, never on stability — this is clock stretching one
+  component over.** A marginal memory overclock does not crash: the link retries the failed
+  transfer, effective bandwidth drops, and the card keeps running. Symptom is **lower**
+  tokens/s or a lower score with **zero** crashes, zero artifacts, and a clean soak — the
+  same "stable and slower" shape already recorded for the core at `1000mV/3100`, and a
+  stability test is blind to it in exactly the same way.
+
+  **Status of the claim, honestly:** the *mechanism* (link-level CRC with replay in
+  GDDR6/6X/7) and the *observable* (a performance turnover that arrives before any
+  instability) are standard, and the turnover is the reason overclockers speak of a memory
+  "sweet spot" rather than a limit. **Where it turns over on this card is unmeasured**, and
+  the two forum claims that circulate — "over +2000 scores drop" vs "no degradation to
+  33 Gbps" — contradict each other and could not be traced to a primary source. Adopt
+  neither; the ladder finds it.
+
+  **Method — measure bandwidth directly rather than inferring it from a game score.** A
+  score moves for many reasons; effective bandwidth moves for one, so the turnover is sharp
+  and needs far fewer passes to see:
+
+  | step | instrument | what it answers | in repos |
+  |---|---|---|---|
+  | ladder +500 → +3000 | `clpeak` (or `nvbandwidth`) | where does effective bandwidth stop rising — the retry onset | `extra/clpeak-cuda` |
+  | at the candidate | `memtest_vulkan` | is anything corrupting **uncorrected** (retries hide the rest) | `extra/memtest_vulkan` |
+  | at the candidate | `ollama run --verbose` eval rate | the end-to-end truth for the workload that motivated this | installed (`ollama-cuda`) |
+  | at the candidate | `gpu-ab-compare.sh` | does gaming gain or lose | in repo |
+
+  **Climb PAST the peak to prove it is a peak** — one declining step is noise, two is a
+  turnover — then settle below it. *Done when:* the bandwidth curve is recorded with its
+  turnover point, the chosen offset beats stock on `ollama` eval rate, and
+  `memtest_vulkan` is clean.
 
   **Tooling — READY, both surfaced 2026-08-04 while repairing a resume by hand:**
 
@@ -317,7 +338,24 @@
   1. **Finish the ladder at 900 and 875 mV** (above) — the open half of the sweep.
   2. **12-pass confirmation** of whatever wins.
      `sudo ./tools/gpu-flatten.sh --mv <mv> --mhz <mhz>; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
-  3. **Persistence** — save as an nvcurve profile, then a systemd unit. Nothing survives a reboot today.
+  3. **Persistence — `nvcurve` already ships it; do not hand-roll a unit.**
+     `nvcurve profile` saves the setting, `nvcurve service install` registers the systemd
+     daemon that re-applies auto-load profiles at boot (`nvcurve autoload` / `daemon` are
+     the pieces underneath). Verified present on this machine 2026-08-04:
+     `nvcurve service {install,configure,uninstall,start,stop,restart,status}`.
+     ⚠️ Unverified by anyone: no third-party report exists of nvcurve persistence
+     surviving a reboot on a 5090. Confirm ours by reading the curve back **after** a
+     reboot, not by trusting `service status`.
+
+     ⚠️ **Pick ONE write path first — NVML and NvAPI fight over the same hardware state.**
+     `nvcurve` writes via NvAPI; anything NVML-based (`nvidia-settings`, LACT,
+     `nvmlDeviceSetGpcClkVfOffset`) writes the same registers and they silently overwrite
+     each other ([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)). This
+     machine has **`nvidia-settings` and `coolercontrol` installed, `coolercontrold`
+     enabled** — coolercontrol is here for fan curves, but it is capable of GPU control,
+     so confirm it is not writing clock/voltage before enabling the nvcurve daemon.
+     Two daemons fighting is exactly the kind of intermittent, unattributable failure
+     that costs a week.
   4. **Validate in a real game** — one fixed GravityMark scene is one shader mix, not a workload.
      **Marvel Rivals, run uncapped/high-fps** — not maxed-RT. The coasting high-boost
      regime is where undervolt instability lives; pinning 575 W holds the clock ~400 MHz
@@ -437,11 +475,19 @@
   - **Memory offset is probably the bigger lever for LLM inference, and we have never
     touched it.** Token generation is memory-bandwidth-bound, not core-bound. See the
     memory item below.
-  - **`gpu_burn` is re-promoted for this use case.** It is a weak *stability* gate (the
-    power cap holds clocks low — see the crash record), but it is the only check here that
-    catches **silent VRAM and compute corruption**, which for inference and image
-    generation is the failure that matters: a wrong token or a subtly wrong image, with no
-    crash and no artifact to see. For gaming it screens; for compute it is load-bearing.
+  - **`gpu_burn` is re-promoted for this use case — and the objection to it does not
+    transfer.** It was demoted because it runs power-capped at ~2 125 MHz, "a V/F point
+    never used in practice." That was true *for gaming*. **SDXL and LLM inference also run
+    power-capped, at those same clocks** — so for compute, `gpu_burn` is testing the
+    operating point the work actually uses, not a soft one. And it is the only check here
+    that catches **silent VRAM and compute corruption**, which is the failure that matters
+    for inference: a wrong token or a subtly wrong image, no crash, nothing to see.
+
+    ⚠️ **Where it goes: the CONFIRMATION of the winner, never inside the sweep.** A pass is
+    still weak evidence about stability, so it decides no rung — and per-rung it would add
+    ~3 min × every rung for a signal that changes no ranking. Once, against the chosen
+    setting, before persistence: `gpu_burn -d 180`, expecting **zero** errors. The real
+    gate above it is still a real inference run.
 
   **Success criterion for the running ladder:** the first target whose *delivered* clock
   beats stock **2 803 MHz** while power stays near **318 W**. That is faster than stock on
