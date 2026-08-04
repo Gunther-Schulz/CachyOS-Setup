@@ -237,13 +237,23 @@
   than the current setting while drawing far less — judge it on score, per the
   clock-stretching finding, never on `nvidia-smi`.
 
-  ⚠️ **The queued command below BAILS at 900 mV without `--clocks`.** Derived floor is
-  2700; predicted start is base 2002 + proven delta 435 = 2437, below the floor, so the
-  explorer correctly prints "cannot reach the floor" and ends the sweep — a no-op that
-  reads like an answer. The proven-delta cap is a **ratchet, not a wall**
-  (`gpu-uv-explore.sh:716` raises `MAX_DELTA` on every pass), so walking 925 → 900 → 890
-  with a lower clock list lets each pass unlock the next rung. Verify the ladder first
-  with `--dry-run`, which writes nothing to the GPU.
+  ⚠️ **The queued command below BAILS at 900 mV without `--clocks`** — this already
+  happened, `~/bench/explore-state.log:150`: derived floor **2800**, predicted start
+  `none` (base 2002 + proven delta 435 = 2437, below the floor), hard cap 2537, and the
+  explorer ended the sweep. Correct behaviour, but the output reads like an answer about
+  the silicon when it is an answer about the clock list.
+
+  ⚠️ **The ratchet CREEPS — one sweep will not reach the target.** `MAX_DELTA` rises on
+  every pass (`gpu-uv-explore.sh:716`) but `DELTA_CAP` is computed **once per anchor**
+  (`:609`), so each anchor can gain at most **one clock-list step** over the best delta
+  proven so far. Walking 925 → 900 → 890 lifts the proven delta roughly 435 → 509 → 598,
+  landing near `900mV/2600` — real progress, well short of +825. Getting further means
+  re-running the sweep (it resumes and re-ratchets), not overriding the cap: the cap is
+  what stopped a +998 ask on 2026-08-04, and that ask killed the machine.
+
+  **But +825 is the wrong target.** It is the guide's *requested* clock; his delivered is
+  2670–2700. Matching **2700 delivered at 900 mV is +698** — about three ratchet steps,
+  and the honest goal.
 
   **First, repair the record** — the
   `1000mV/3100` retest passed but was run by hand, so the state file does not know, and
