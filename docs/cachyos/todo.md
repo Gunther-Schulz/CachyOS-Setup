@@ -234,7 +234,39 @@
   journalctl -b | grep -i xid                                     # must be empty
   ```
 
-  **⚠️ `gpu_burn` runs FIRST because it is the only one that catches silent wrongness.** Marginal voltage produces incorrect arithmetic *before* it produces anything visible — a run that looks clean in FurMark while `gpu_burn` reports `FAULTY` means the card is quietly corrupting results, which is the failure mode that would ruin real work later. Artifact-watching cannot see that.
+  **⚠️ `gpu_burn` is the SCREEN, not the gate — corrected 2026-08-04.** It runs first because it is cheap and because a *failure* there is definitive: a card that cannot stay correct at the easy operating point will not survive the hard one. But a **pass is weak evidence**, and the magnitude is now quantified from this card's own curve. A global offset produces a different voltage reduction depending on where the card is operating:
+
+  | Load | Clock | Voltage stock → +400 | Reduction |
+  |---|---|---|---|
+  | `gpu_burn` (power-capped) | ~2 125 MHz | ~912 → ~883 mV | **−29 mV** |
+  | **Gaming / GravityMark** | ~2 823 MHz | ~1 025 → ~934 mV | **−91 mV** |
+
+  **Gaming clocks receive roughly three times the undervolt**, because this curve is flat at the top and steep lower down, so a fixed *frequency* offset becomes a much larger *voltage* drop where it is flat. `gpu_burn` is therefore not testing a slightly easier case — it is testing about a third of the stress, at a V/F point never used in practice.
+
+  **The real gate is a load running at gaming clocks**: GravityMark RT, then actual play. `gpu_burn` still earns its three minutes for the one thing nothing else catches — silent VRAM and compute corruption, invisible to any artifact check — but its pass means "not obviously broken", never "safe to keep".
+
+  ✅ **Confirmed the hard way, 2026-08-04: at +400 MHz `gpu_burn` ran CLEAN with zero errors, and GravityMark FROZE the machine.** Had `gpu_burn` been trusted as the gate, that offset would have shipped and hung mid-game. The screen/gate distinction is not theoretical.
+
+  ⚠️ **And it froze PART-WAY THROUGH the run, not at startup** — which is the more important half. Instability at the wall is **probabilistic, not deterministic**: it needs the right instruction mix at the right moment on the right core, so a short clean run proves very little. Two consequences:
+  - **A setting that survives 3 minutes has not been validated.** Duration is the test.
+  - **Every "PASSED" in the earlier offset sweep is weak** for the same reason — 180 s of `gpu_burn` plus 120 s of FurMark, both at power-capped clocks. Short runs at the wrong V/F point.
+
+  This is why the final gate is ~1 h of real play and not a benchmark, and why the back-off-one-step rule exists at all: the margin absorbs the runs that would have failed on a longer sample.
+
+  ### ✅ RESULT — the wall, and the setting to keep
+
+  | Offset | GravityMark RT (2K/200K) | Verdict |
+  |---|---|---|
+  | stock | **78 906** (472.5 FPS) | baseline |
+  | **+250** | **81 399** (487.4 FPS) — **+3.2 %** | ✅ **stable, keep this** |
+  | +300 | not tested at gaming clocks | `gpu_burn` clean only — weak evidence |
+  | **+400** | **FROZE** | ❌ past the wall |
+
+  **The wall is between +300 and +400. Take +250.** It already delivers the full ~3 %, and per the back-off-one-step rule the last *passing* setting is the edge rather than the target — +300 rests only on the weak test that +400 just discredited.
+
+  **The ~3 % is corroborated by a second workload once temperature is controlled.** `gpu_burn` GFLOP/s looked flat across offsets, but that comparison was temperature-confounded — each sweep step started hotter than the last. Matched by temperature: **67 915 at +400/72 °C vs 65 681 at +50/71 °C (+3.4 %)**, and **64 595 at +400/87 °C vs ~63 000 at +50/86 °C**. Same ~3 % GravityMark showed, from an independent load.
+
+  ⚠️ **Not thermal throttling, at any point.** Throughput falling with heat (70 237 → 64 595 GFLOP/s across 65 → 87 °C, −8 %) is **leakage at a fixed power budget**: `SW Power Cap: Active`, `HW/SW Thermal Slowdown: Not Active`, lifetime counter **0 µs**. Throttling steps; leakage declines smoothly. This card has never thermally throttled.
 
   **⚠️ GravityMark alone is not a stability test.** It never approaches the power limit (338 W of 575 in rasterization) because it is geometry-bound, not power-bound. It scores well and runs cool — useful for measuring gain, useless for finding instability.
 
