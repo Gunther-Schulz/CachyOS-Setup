@@ -517,7 +517,7 @@ if [ "${STOCK_CLK:-0}" -gt 0 ]; then
   say "  probing the power-capped regime at stock:"
   furmark_probe stock
 else
-  say "  ⚠️ could not read the stock clock; the crossover stop rule is DISABLED"
+  say "  ⚠️ could not read the stock baseline; the crossover stop rule is DISABLED"
 fi
 
 CLOCK_LIST=$(echo "$CLOCKS" | tr ' ' '\n' | sort -n | tr '\n' ' ')
@@ -681,17 +681,26 @@ for mv in $ANCHORS; do
     break
   fi
   # ── STOP RULE, grounded in the goal rather than a threshold ───────────────────────
-  # Above the stock baseline clock, a lower anchor is FREE power — strictly better, keep
-  # going. Below it you have started trading performance for watts, which is not the
-  # stated goal. The crossover is the decision point, and the 1% tolerance is the
-  # measured run-to-run variance (0.3% spread), not a guess.
-  DELIVERED=$(clock_of "${mv}mV/${BEST_AT_ANCHOR}")
-  if [ "${STOCK_CLK:-0}" -gt 0 ] && [ "$DELIVERED" -gt 0 ]; then
-    THRESH=$(( STOCK_CLK * 99 / 100 ))
-    say "  delivered ${DELIVERED} MHz vs stock ${STOCK_CLK} MHz (floor ${THRESH})"
-    if [ "$DELIVERED" -lt "$THRESH" ]; then
+  # Above the stock baseline, a lower anchor is FREE power — strictly better, keep going.
+  # Below it you have started trading performance for watts, which is not the stated goal.
+  # The crossover is the decision point, and the 1% tolerance is the measured run-to-run
+  # variance, not a guess.
+  #
+  # MEASURED IN SCORE, NOT IN REPORTED CLOCK. This rule read clock_of() until 2026-08-04,
+  # which contradicted the tool's own central finding: the card reports a clock it is not
+  # delivering when the voltage cannot sustain it. Checked against that day's real ladder,
+  # the clock version would have ENDED THE SWEEP on 1000mV/2800 and 1000mV/2900 — rungs
+  # scoring +0.3% and +3.5% ABOVE stock — because their reported clock sat under the stock
+  # figure, and it spared the best rung in the ladder (950mV/3000, +7.2%) by one megahertz.
+  # A rule that stops on "performance lost" must read the measurement of performance.
+  # Reported clock is not that measurement; delivered score is.
+  DELIVERED_SC=$(score_of "${mv}mV/${BEST_AT_ANCHOR}")
+  if [ "${STOCK_SCORE:-0}" -gt 0 ] && [ "${DELIVERED_SC:-0}" -gt 0 ]; then
+    THRESH=$(( STOCK_SCORE * 99 / 100 ))
+    say "  delivered score ${DELIVERED_SC} vs stock ${STOCK_SCORE} (floor ${THRESH})"
+    if [ "$DELIVERED_SC" -lt "$THRESH" ]; then
       say ""
-      say "  ► STOPPING: ${mv} mV delivers ${DELIVERED} MHz, below the stock baseline."
+      say "  ► STOPPING: ${mv} mV scores ${DELIVERED_SC}, below the stock baseline."
       say "    Lower anchors can only be slower. Past this point every further step"
       say "    trades performance for watts, which is not the goal — so the sweep ends"
       say "    here rather than spending hours mapping trades you would not take."
