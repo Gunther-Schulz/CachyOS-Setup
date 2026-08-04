@@ -280,6 +280,29 @@ cap alone changes nothing below itself. The half that matters is **raising** fre
 at the voltage points the card actually uses, and under a power limit that is precisely
 where the gain comes from.
 
+### Same operation as CPU Curve Optimizer, expressed in the mirror
+
+Calling the CPU work an "undervolt" and the GPU work an "overclock" is a naming
+accident, not a real difference. Both shift the same V/F curve; the vendors simply
+label opposite axes of it.
+
+| | CPU — AMD Curve Optimizer | GPU — NVIDIA curve |
+|---|---|---|
+| Knob is expressed as | **voltage** offset at each frequency (−15 = less voltage) | **frequency** offset at each voltage (+200 MHz = more clock) |
+| What it actually does | shift the V/F curve so the chip does more work per volt | **identical** |
+| Why it can *raise* performance | lower voltage → thermal/power headroom → higher sustained boost | more clock per volt → more clock inside the power cap |
+| Risk | the chip must beat its validated V/F point | **identical** |
+| **Fails at** | **idle / light load** — one core boosting high at reduced voltage | **under load** — high clocks are where margin vanishes |
+| Recovery | BIOS visit, possibly CMOS clear | one live command, no reboot |
+| Granularity | one offset per core; Curve Shaper adds a frequency × temperature grid | per-point across 128 voltage points |
+
+Both are asking silicon to exceed what the vendor validated, and both work for the same
+reason — factory curves are conservative enough to cover the worst chip in the batch.
+**The differences that matter operationally are the last two rows, not the naming.**
+Curve Optimizer is the riskier one to live with, because its failures land while you are
+working and cost a BIOS trip; a GPU curve edit fails while you are testing it and is
+undone with a command.
+
 **The catch, stated plainly: this is an overclock and carries an overclock's risk.**
 Asking for 2 800 MHz at 950 mV means running the silicon past the point NVIDIA
 validated for that voltage. It works because factory curves are conservative enough to
@@ -287,12 +310,52 @@ cover the worst chip they shipped — but how much headroom *this* chip has is a
 lottery, and pushing past it produces artifacts, driver resets or `Xid` errors. There is
 no free lunch; there is an unclaimed margin, of unknown size until measured.
 
-**One thing worth checking during phase 2:** under `gpu_burn` the measured **NVVDD was
-~1.00–1.075 V while the SM clock read 2 085 MHz**, yet the curve says 2 092 MHz needs
-only **910 mV** (point 73). If that gap is real rather than a sampling artefact of a
-fluctuating load, there is ~90–150 mV of slack at the operating point before any curve
-edit at all — which would make the undervolt unusually effective here. Measure it
-before believing it.
+### The voltage/clock gap: real, systematic — and it is the power cap, not slack
+
+Drilled into the 326 samples of the stock run. The gap is **not** a sampling artefact —
+the joint distribution is tight and consistent:
+
+| NVVDD | samples | mean SM clock | curve says that voltage gives |
+|---|---|---|---|
+| 0.995 V | 121 | **2 103 MHz** | 2 715 MHz |
+| 1.000 V | 83 | **2 127 MHz** | 2 752 MHz |
+| 1.020 V | 13 | **2 205 MHz** | 2 805 MHz |
+| 1.075 V | 29 | **2 224 MHz** | 2 917 MHz |
+
+Roughly **600 MHz below the curve at every voltage**, across hundreds of samples.
+
+**But the cause is visible in the timeline, and it is the 575 W cap.** The card was
+power-limited from the *fourth second*:
+
+```
+t+2    SM   180 MHz   0.800 V    20.6 W     ← idle
+t+4    SM  2287 MHz   1.020 V   570.0 W     ← already at the cap
+t+6    SM  2272 MHz   1.020 V   575.0 W
+```
+
+It was never free. Temperature is not the limiter either — 2 355 MHz at **65.6 °C** and
+2 370 MHz at **86.4 °C** both sit at 575 W, i.e. 21 °C apart at the same clock and power.
+
+**The one sample that escaped the cap proves the point:** `2 722 MHz @ 1.075 V,
+515.8 W` — the single reading below the power limit, and the highest clock of the run.
+Against a curve value of 2 917 MHz it is 195 MHz short (6.7 %), not 600. **The gap
+scales with how hard the power limiter is working**, so it is clamping, not a fixed
+offset.
+
+❌ **Retracted: "~90–150 mV of slack at the operating point."** There is no free voltage
+headroom sitting there; the run simply measured a clamped state end to end.
+
+⚠️ **Two explanations remain, and this data cannot separate them:**
+1. The limiter clamps *frequency* while voltage tracks the higher requested curve
+   point — an inefficient state that an undervolt would directly fix.
+2. The reported `NVVDD` is a rail setpoint including load-line/droop compensation
+   rather than effective die voltage, in which case the "real" voltage is lower and the
+   curve is being honoured after all — no anomaly.
+
+**The measurement that separates them is one we already need: a load that does not hit
+575 W.** If at ~450 W the card sits near its curve value, explanation 1 holds and the
+undervolt payoff under power-limited load is large. Superposition or a real game, via
+`sudo ./tools/gpu-thermal.sh gaming -l "<benchmark>"`.
 
 ## Open: case fans are driven by CPU temperature only
 
