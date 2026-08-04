@@ -223,6 +223,46 @@ A method that produces good benchmark numbers but fails these is not a solution:
 3. **No per-application or per-game fiddling.** Anything needing a command before each
    workload is not a daily-driver answer.
 
+## The V/F curve, read from this card (2026-08-04)
+
+✅ **`nvcurve setup` → "Compatible" on driver 610.43.03.** All eight NvAPI functions
+resolved, all seven read tests passed, the write-verify wrote +5 MHz to point 126 with
+**no collateral changes** and restored cleanly. That closes the one gap the research
+could not: the undocumented NvAPI path was only confirmed on adjacent driver versions.
+
+**132 active points** — 127 GPU core (180–3180 MHz, 450–1240 mV) and 5 memory
+(405–14 001 MHz, 530–710 mV). Snapshots land in `/var/cache/nvcurve/snapshots/`.
+
+### The top of the curve is very poor value
+
+Taking point 80 (2 580 MHz @ 950 mV) as the reference, and modelling power as **V²·f**:
+
+| Point | MHz | mV | Δ clock | Δ power | MHz per +10 mV |
+|---|---|---|---|---|---|
+| 79 | 2 565 | 945 | −0.6 % | −1.6 % | **90** |
+| 80 | 2 580 | 950 | 0 % | 0 % | 30 |
+| 86 | 2 700 | 990 | +4.7 % | +13.6 % | 25 |
+| 92 | 2 820 | 1 025 | +9.3 % | +27.2 % | 27 |
+| 100 | 2 917 | 1 075 | +13.1 % | +44.8 % | 18 |
+| 116 | 3 090 | 1 175 | +19.8 % | +83.2 % | 16 |
+| **126** | **3 180** | **1 240** | **+23.3 %** | **+110.0 %** | **14** |
+
+**The card more than doubles its power for less than a quarter more clock.** The
+efficiency knee sits around **points 78–80, 2 520–2 580 MHz at 940–950 mV**: below it
+the curve returns ~90 MHz per 10 mV, above it that collapses to 14.
+
+⚠️ **The Δ-power column is a first-order V²·f model, not a measurement.** It ranks the
+points correctly and is the right basis for *choosing* a target; the actual saving must
+be measured with `gpu-thermal.sh`, not taken from this table.
+
+**What this means for where an undervolt bites.** Under `gpu_burn` the card sat at
+**2 085 MHz** — far below the curve's top — because the 575 W power cap was already
+binding. So a curve edit capping at, say, 2 800 MHz would barely change the power-virus
+numbers. **It bites in gaming and light-to-medium loads**, where the card is free to
+climb into the 2 900–3 180 MHz region and pay that 110 % power premium for the last
+23 % of clock. That is also where the fans surge — which makes this the GPU-side twin
+of the CPU finding that partial load, not full load, is the hot case.
+
 ## Open: case fans are driven by CPU temperature only
 
 Under a GPU-only load the CPU stays idle, so a CPU-temperature fan curve has no
