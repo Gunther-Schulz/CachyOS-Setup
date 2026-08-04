@@ -53,13 +53,20 @@ printf '%8s %8s %9s %9s %8s %7s %9s %10s %s\n' \
 # the timestamp into the wrong variable and breaking every join.
 while IFS='|' read -r rung ts; do
   [ -n "$rung" ] || continue
-  # first soak dir created at or after this rung started
-  d=$(for x in "$home"/bench/soak-*/; do
-        [ -f "$x/sensors.txt" ] || continue
-        xs=$(date -r "$x" +%s 2>/dev/null) || continue
-        rs=$(date -d "$ts" +%s 2>/dev/null) || continue
-        [ "$xs" -ge $((rs - 5)) ] && echo "$xs $x"
-      done | sort -n | head -1 | cut -d' ' -f2-)
+  # Prefer the soak directory the ladder RECORDED for this rung (column 5). Timestamp
+  # matching is a fallback for older state files that predate it — and it is guesswork
+  # that silently joins two rungs to the same directory when their windows overlap,
+  # which is exactly what it did here: 1000mV/2800 and 1000mV/2900 reported identical
+  # power, clock and score because both resolved to the first run's data.
+  d=$(awk -F'\t' -v l="$rung" '$1==l && $2=="FINISHED" && $5!=""{print $5}' "$STATE" | tail -1)
+  if [ -z "$d" ]; then
+    d=$(for x in "$home"/bench/soak-*/; do
+          [ -f "$x/sensors.txt" ] || continue
+          xs=$(date -r "$x" +%s 2>/dev/null) || continue
+          rs=$(date -d "$ts" +%s 2>/dev/null) || continue
+          [ "$xs" -ge $((rs - 5)) ] && echo "$xs $x"
+        done | sort -n | head -1 | cut -d' ' -f2-)
+  fi
   # verdict comes from the matching FINISHED line, if it exists yet
   v=$(awk -F'\t' -v r="$rung" '$1==r && $2=="FINISHED"{print $3}' "$STATE" | tail -1)
   v=${v:-RUNNING}
