@@ -277,6 +277,27 @@
   On resume it will ask about the unfinished `950mV/3100` rung — **answer `y`, it did crash
   the machine.**
 
+  **READY — memory offset, never tested, and it is the untouched half.** The whole ladder
+  tunes the **core** V/F curve; memory has been left at stock throughout. For LLM inference
+  this is likely the larger lever, since token generation is memory-bandwidth-bound.
+
+  - The driver-reported allowed range on a 5090 is **−1000/+3000 MHz**
+    ([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)) — not the "+2000 max"
+    several guides repeat.
+  - igorslab measured **every** 5090 sample he tested holding at least +2000, best +3000,
+    for only **+20–30 W** total; he treats GDDR7 memory OC as near-free.
+  - A Linux compute user runs **+4400 MT/s (≈+2200 in Afterburner units)** sustained.
+
+  ⚠️ **Judge it on delivered throughput, never on stability** — the same rule the core
+  ladder already runs on, for a stronger reason. GDDR7 error correction retries a failed
+  transfer instead of crashing, so a too-high memory offset shows up as **lower** tokens/s
+  or a lower score with **zero** crashes and zero artifacts. That is clock stretching's
+  exact shape one component over, and a stability soak cannot see it. Two contradictory
+  forum claims exist about where that turnover sits; neither is verified, so **measure it
+  here** rather than adopting a number. *Done when:* a memory-offset ladder measured with
+  `gpu-ab-compare.sh` (games) and a fixed inference/SDXL run (compute), with the winner
+  chosen by delivered work and `gpu_burn` clean for corruption.
+
   **Tooling — READY, both surfaced 2026-08-04 while repairing a resume by hand:**
 
   - **`gpu-uv-explore.sh` needs a `--state <file>` flag.** `--resume` takes the newest
@@ -399,10 +420,28 @@
   here; ours measures ~+3.9 % — same direction, and his card was capped at stock where ours
   is not.)
 
-  ⚠️ **The premise: your games look like GravityMark, not FurMark.** If the titles you
-  actually play *do* pin 575 W, the tuning is conservative — optimising the harder case
-  and leaving free gain uncollected in the one that matters. Safe direction to be wrong
-  in, but worth re-checking if a game turns out to sit at the cap.
+  ✅ **CLOSED 2026-08-04 — this machine runs BOTH regimes daily, so both payouts are real
+  value, not one of them a curiosity.** Operator also runs **SDXL image generation and LLM
+  inference** on this card besides gaming. Those pin the power limit the way FurMark does,
+  so they sit squarely in the **capped** regime where the flatten pays as **throughput**.
+  Gaming sits in the coasting regime and pays as **watts and noise**. One flatten, both
+  halves collected — which retires the `quiet`/`performance` two-profile idea for good.
+
+  Three consequences that do not follow from the gaming case alone:
+
+  - **The capped-regime number is the one that matters for compute.** ~+3.9 % more work at
+    the same wattage is a permanent throughput gain on every inference run.
+    Independent Linux corroboration on the same card: an SDXL workload measured
+    **39.3–40 s → 36.3–36.5 s** with an undervolt-plus-memory-OC
+    ([Level1Techs](https://forum.level1techs.com/t/some-gpu-5090-4090-3090-a600-idle-power-consumption-headless-on-linux-fedora-42-and-some-undervolt-overclock-info/237064)).
+  - **Memory offset is probably the bigger lever for LLM inference, and we have never
+    touched it.** Token generation is memory-bandwidth-bound, not core-bound. See the
+    memory item below.
+  - **`gpu_burn` is re-promoted for this use case.** It is a weak *stability* gate (the
+    power cap holds clocks low — see the crash record), but it is the only check here that
+    catches **silent VRAM and compute corruption**, which for inference and image
+    generation is the failure that matters: a wrong token or a subtly wrong image, with no
+    crash and no artifact to see. For gaming it screens; for compute it is load-bearing.
 
   **Success criterion for the running ladder:** the first target whose *delivered* clock
   beats stock **2 803 MHz** while power stays near **318 W**. That is faster than stock on

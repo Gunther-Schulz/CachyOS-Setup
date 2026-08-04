@@ -887,6 +887,36 @@ anchors close to the already-proven delta — `900mV/2400` (+398) or `900mV/2500
 not passing. If those fail, the low-voltage points are not conservative on this sample and
 the anchor walk should stop at 925 mV.
 
+#### ✅ RESOLVED: 875 mV is unreachable, and 890 mV is the floor — arithmetic, not a test
+
+The cap *does* bind, just not at 900 mV — it binds **below** it, because the stock curve
+collapses faster than the cap allows you to climb. This card's own two anchors give the
+slope: 2 002 MHz @ 900 mV, 2 347 @ 925 mV → **13.8 MHz per mV**. Extrapolating down, with
+`+1000` as the ceiling any tool can ask for:
+
+| anchor | est. base | base + 1000 = tool ceiling | can reach 2 827? |
+|---|---|---|---|
+| 900 mV | 2 002 | 3 002 | yes |
+| **890 mV** | **1 864** | **2 864** | **yes — barely** |
+| 880 mV | 1 726 | 2 726 | no |
+| 875 mV | 1 657 | 2 657 | **no** |
+
+So **`875 mV` — a planned anchor of the original sweep — was never reachable**, and its
+"never tested" status is not an open question. Nothing below ~890 mV can hold a useful
+clock through a ±1000 offset. Drop it from the ladder rather than scheduling it.
+
+This independently reproduces the FE guide author's own floor: *"0.890 is the lowest
+voltage which allows me to match stock speeds."* He hit it on his card; the same number
+falls out of this card's curve slope. Corroborated from the other side by a Zotac 5090
+owner at 0.865 V, whose vBIOS base is **1 407 MHz** — `+1000` caps him at 2 407 and he
+[abandoned the attempt](https://forums.guru3d.com/threads/extend-core-offset-over-1000-rtx-5090.455803/)
+because the limit is driver-level, not thermal or electrical. This card extrapolates to
+1 519 → 2 519 at the same voltage: same wall, same mechanism.
+
+±1000 MHz core is confirmed as the NvAPI-reported allowed range on a 5090
+([LACT #936](https://github.com/ilya-zlobintsev/LACT/issues/936)) — the same number
+Windows tools enforce, so it is not a `nvcurve` restriction to work around.
+
 ### The complete GPU crash record — and what it says about which load to test with
 
 Every Xid this machine has ever logged, whole journal, all four retained boots
