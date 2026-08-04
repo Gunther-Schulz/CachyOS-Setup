@@ -479,7 +479,9 @@ reading — which is exactly the trap that made the earlier 493 W figure mislead
 | Tool | Corpus | RTX 5090 **Linux** entries |
 |---|---|---|
 | **Phoronix Test Suite** / OpenBenchmarking.org (AUR `phoronix-test-suite`) | large, ongoing, GPU-filterable | ✅ **confirmed present**, incl. a Unigine set (`2501310-PTS-UNIGINER91`) and gaming sets (`2501303-PTS-NVIDIAJA55`) |
-| **GravityMark** ([leaderboard](https://gravitymark.tellusim.com/leaderboard/)) | ✅ **verified 2026-08-04**: every row carries `User \| Score \| FPS \| OS \| API \| GPU`, with filters for OS, API, GPU vendor, resolution, rendering mode. ~220 entries. | ⚠️ **filtering is CLIENT-SIDE** — `?os=linux` does not apply, so only a browser can use it. Whether Linux+5090 rows exist is **still unknown**; the default view is Windows-only. |
+| **GravityMark** ([leaderboard](https://gravitymark.tellusim.com/leaderboard/)) | ✅ every row carries `User \| Score \| FPS \| OS \| API \| GPU`, with filters for OS, API, GPU vendor, resolution, rendering mode. **Free**; `.run` self-installer. | ✅ **CONFIRMED by live browser-filtered read, 2026-08-04: Linux + RTX 5090 = 10 entries; Windows + RTX 5090 ≈ 45** (some dual-GPU). Filtering is client-side JS — a plain fetch cannot reach it, only a real browser. |
+| Basemark GPUScore "Relic of Life" | cross-platform, OS+API labelled | ✅ Linux **and** Windows 5090 entries. **Linux+Vulkan 23 181 vs Windows+DX12 20 995** — Linux *ahead*, but that comparison confounds OS with API. |
+| 3DMark | — | ❌ no Linux support |
 | vkmark / glmark2 | on OpenBenchmarking | unconfirmed; scenes likely too light to load a 5090 |
 | **Unigine's own leaderboard** | — | ⚠️ **Cannot determine whether it segments by OS/API at all** — pages render empty to a fetcher. **So the 47–53 k comparison group's platform is unknown**, and the 33 % deficit may be measured against Windows/DirectX systems. |
 
@@ -505,6 +507,14 @@ phoronix-test-suite merge-results                       # purely local diff
 ```
 Browsing and comparing require nothing to be uploaded; `upload-result` only publishes
 *your* result into the public set.
+
+⚠️ **There is NO trustworthy published figure for a "normal" Windows-vs-Linux RTX 5090
+gap.** GamersNexus tested a 5090 on Bazzite Linux (Dec 2025) but states in the article
+that it is **"not directly cross-comparable with our Windows testing"**. No rigorous
+outlet has published a clean same-hardware delta. **Discard the "20 % Windows advantage"
+and "95–99 % of Windows performance" figures in circulation** — traced 2026-08-04 to a
+single low-credibility SEO page with no reviewer, methodology or citations. So there is
+no reference value to judge a measured gap against; the corpora above are the substitute.
 
 ⚠️ **Provisional and load-bearing: ~33 % may be too large for an API effect alone.**
 Measured same-machine Superposition OpenGL-vs-DirectX deltas run **~10–18 %** (Radeon VII
