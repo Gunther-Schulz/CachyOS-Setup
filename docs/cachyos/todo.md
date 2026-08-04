@@ -84,7 +84,15 @@
 
   Why it matters: hotspot-minus-edge delta is what distinguishes a bad mount or dried pad from a normal load, and on a 575 W card the memory junction is the sensor that actually limits. Idle delta measured here is **8 °C** (49.9 core / 58.0 mem) — that is the baseline to compare a loaded reading against.
 
-  **Still open:** the root-run hotspot value has not been captured (needs an operator `sudo` run), so the sensor-array scan is unconfirmed on this specific card. If Hot Spot shows `n/a` under root, `--sensors` dumps the raw array for a bug report.
+  ✅ **Hotspot confirmed working under root, 2026-08-04.** The NV_THERM sensor-array scan finds live sensors on this specific card — nothing further needed.
+
+  **IDLE BASELINE (root, desktop idle, 2026-08-04) — the reference for every later comparison:**
+
+  | Core | Memory | Hot Spot | NVVDD | MSVDD |
+  |---|---|---|---|---|
+  | 46.0 °C | **58.0 °C** | 50.0 °C | 0.800 V | 0.870 V |
+
+  Two deltas worth carrying forward: **hotspot − core = 4 °C** at idle, and **memory sits 12 °C above core** — the memory junction is the hottest thing on the card even at rest, which is the expected GDDR7 picture and the reason memory temp was the sensor worth recovering.
 
 - **Desktop — BIOS update: researched 2026-08-04, verdict DO NOT UPDATE NOW. It is the contingency if EXPO validation fails, not a preemptive action.**
 
@@ -117,7 +125,20 @@
   | FurMark 2 | AUR `furmark` | GUI / OpenGL + Vulkan stress | graphical power-virus, exercises the render path |
   | Unigine Superposition | AUR `unigine-superposition` | GUI benchmark | realistic game-like load, closest to actual use |
 
-  Protocol: start `sudo ./build/nvidia-gpu-sensors --watch` in one terminal and `nvidia-smi dmon -s pucvmet -o DT -f gpu-log.csv` in another, then run the load ≥10 minutes and record core / memory / hotspot at thermal steady state. **Do this BEFORE the GPU undervolt**, for the same reason as the CPU baseline — the stock thermal signature is not recoverable afterwards. **Unverified:** no source establishes that any of these actually reaches 575 W on a 5090 specifically; power-draw figures in circulation come from gaming benchmarks, not from these tools. Read the `pwr` column rather than assuming.
+  Protocol — three terminals, load running ≥10 minutes so the heatsink actually reaches steady state (the first 2–3 minutes tell you nothing):
+  ```fish
+  sudo ~/dev/vendor/nvidia-gpu-sensors/build/nvidia-gpu-sensors --watch
+  nvidia-smi dmon -s pucvmet -o DT -f ~/bench/gpu-stock.csv
+  ./gpu_burn 900     # or FurMark / Superposition
+  ```
+  **Compare against the idle baseline above** (core 46.0 / mem 58.0 / hotspot 50.0). What to read:
+  - **hotspot − core delta.** Idle it is 4 °C. A modest rise under load is normal; a *disproportionate* one is the signature of poor die contact — a bad mount, pump-out, or dried paste.
+  - **memory temperature**, already the hottest sensor at idle. On a 575 W card this is what actually throttles.
+  - **the `pwr` column** — do not assume the load saturates the card, read what it draws.
+
+  **Do this BEFORE the GPU undervolt**, for the same reason as the CPU baseline: the stock thermal signature is not recoverable afterwards.
+
+  ⚠️ **No verified thresholds.** Commonly cited figures (hotspot delta under ~15 °C healthy, GDDR7 limit around 105 °C) are community numbers this repo has **not** confirmed against a primary source — treat the idle deltas above as the real reference and judge by change, not by an absolute number pulled from a forum.
 - **NVMe firmware — desktop surveyed 2026-08-03, verdict: flash nothing for now.** Routine maintenance, not surge-specific. Re-check every few months, or when a drive misbehaves.
 
   | Drive | Node | Installed FW | Verdict |
