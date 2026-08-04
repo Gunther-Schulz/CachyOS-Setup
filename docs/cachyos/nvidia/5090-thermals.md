@@ -676,6 +676,36 @@ starved for power at gaming load — but a genuine, measurable win in either dir
 
 ## RESULT: the undervolt ladder so far, and the setting to use (2026-08-04)
 
+### What this setting buys — the plain-language reference
+
+The card picks its operating regime **per scene**, and the undervolt pays out in a
+different currency in each:
+
+| regime | when | what the undervolt does | measured here |
+|---|---|---|---|
+| **coasting** (power headroom left) | most gaming — GravityMark sits ~360 W of 575 | **same FPS, less power** — delivered clock is unchanged, so score cannot move | score +0.10 %, CI [−0.10, +0.29] (ABBA A/B); power **−9.5 %**, reproduced every session |
+| **capped** (pinned at 575 W) | heavy scenes, path tracing, SDXL/Wan/LLM generation | **more FPS/throughput, same power** — saved voltage becomes clock inside the fixed budget | **+4.1 %** temp-matched (FurMark probe) |
+
+So: in ordinary gaming this setting buys **acoustics and heat, not frames** — and the
+capped gain lands exactly where FPS dips, the only place a few percent is noticeable.
+The real throughput customer is the compute workload, which pins the cap for minutes.
+
+**Why others report FPS gains on the same card, and this one measures zero:**
+
+1. **The careful reports agree with us.** The FE guide's 0.890 V "*matches* stock
+   speeds"; the Astral owner reported *"<2 % score"* at ~20 % less power. Same result,
+   different emphasis — "undervolt = more FPS" is mostly paraphrase drift.
+2. **Capped-regime benchmarks.** Steel Nomad and 4K path tracing pin 575 W; gains
+   there are real (see the +4.1 % above) and we reproduce them in that regime.
+3. **Thermal reclaim we don't need.** A throttling FE wins boost bins back by dropping
+   100 W. This card peaks 74–78 °C in soaks — it was never leaving boost on the table.
+4. **A bundled memory OC.** The Astral post ran +2000 memory alongside; memory offset
+   genuinely adds FPS in bandwidth-bound scenes. That is the parked follow-on project,
+   not part of this setting.
+5. **The block-measurement error.** Before/after runs in different sessions charge
+   baseline drift to the setting — we sold ourselves "+7.1 %" that way (retraction
+   below) and the report now refuses it mechanically (IMPLAUSIBLE guard).
+
 ### ⚠️ RETRACTED: "+7.1 % score". The performance claim does not reproduce.
 
 **The setting delivers the same performance at ~9.5 % less power. It is not faster.**

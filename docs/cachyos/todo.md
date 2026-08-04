@@ -440,7 +440,9 @@
   each shown red against the old implementation first.
 
   **Remaining (ready), in order:**
-  1. **Finish the ladder at 900 and 875 mV** (above) — the open half of the sweep.
+  1. **Finish the ladder at 925, 900 and 890 mV** (above) — the open half of the sweep.
+     (875 is off the list: unreachable under the ±1000 MHz cap, ceiling ~2657 —
+     resolved in [nvidia/5090-thermals.md](nvidia/5090-thermals.md); 890 is the floor.)
   2. **12-pass confirmation** of whatever wins.
      `sudo ./tools/gpu-flatten.sh --mv <mv> --mhz <mhz>; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
   3. **Persistence — `nvcurve` already ships it; do not hand-roll a unit.**
@@ -477,6 +479,14 @@
      journalctl -b | grep -i xid
      env LC_ALL=C awk -F, '$2+0>100{n++; p+=$2; c+=$1; if($2+0>545)cap++} END{printf "%d samples under load  mean %.0f W  mean %.0f MHz  at the cap %.0f%%\n", n, p/n, c/n, cap*100/n}' ~/bench/game-session.csv
      ```
+
+  **PARKED — clean-state pass over `nvidia/` docs (operator + agent, 2026-08-05).**
+  Trigger: steps 1–4 above done (sweep, confirm, persistence, game validation).
+  `5090-thermals.md` carries journey sections the repo's own clean-state principle says
+  to cut (resolved investigations, superseded analyses); deferred deliberately because
+  every remaining step rewrites doc state — cleaning now is cleaning twice. The
+  "plain-language reference" section at the top of RESULT is the keep-model: applied
+  state, the why, pointers instead of restatement.
 
   ---
 
