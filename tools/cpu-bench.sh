@@ -80,6 +80,40 @@ fi
 # --- helpers ------------------------------------------------------------------
 # stress-ng --metrics-brief prints the stressor row; column 9 is bogo ops/s (real time).
 bogo_from() { awk -v s="$1" '$0 ~ (" "s" ") && NF>=9 {for(i=1;i<=NF;i++) if($i==s){print $(i+5); exit}}' "$2"; }
+# Temperature does NOT come from turbostat: both CoreTmp and PkgTmp were asked
+# for and neither produced a column on this AMD platform (verified 2026-08-04 —
+# the -S header came back as just "Busy% Bzy_MHz PkgWatt"). k10temp via sysfs
+# works and is strictly better here: it exposes Tctl (what the board's fan curve
+# follows) plus per-CCD temps, and on a 9950X3D the two CCDs differ — CCD0 carries
+# the 3D V-Cache and runs cooler than CCD1.
+k10temp_dir() {
+  local h n
+  for h in /sys/class/hwmon/hwmon*; do
+    n=$(cat "$h/name" 2>/dev/null) || continue
+    [ "$n" = k10temp ] && { echo "$h"; return 0; }
+  done
+  return 1
+}
+
+# Sample k10temp every 2s into $1 until killed.
+temp_sampler() {
+  local out=$1 hw=$2 l
+  while :; do
+    for l in "$hw"/temp*_label; do
+      printf '%s=%s ' "$(cat "$l")" "$(cat "${l%_label}_input")"
+    done
+    echo
+    sleep 2
+  done > "$out"
+}
+
+# Max of a named k10temp label across a sample file, in degrees C.
+temp_max() {
+  awk -v want="$1" '{for(i=1;i<=NF;i++){split($i,kv,"=");
+                       if(kv[1]==want && kv[2]+0>m) m=kv[2]+0}}
+                    END{if(m) printf "%.1f", m/1000; else print "n/a"}' "$2"
+}
+
 # turbostat -S prints a summary row per interval, but the file opens with an
 # elapsed-time line ("60.014170 sec") BEFORE the header — so the header is not
 # necessarily line 1. Find it wherever it is, and re-find it if it repeats.
@@ -98,24 +132,35 @@ run_set() {          # $1=name  $2=stressor-label  $3..=stress-ng args
   echo "--- $name: $RUNS x ${SECS}s ---"
   for i in $(seq 1 "$RUNS"); do
     local so="$OUT/${name}-run${i}.txt" to="$OUT/${name}-run${i}-turbostat.txt"
-    # PkgTmp, not CoreTmp: the -S summary row carries the package sensor.
-    turbostat --interval 5 --quiet -S --show PkgWatt,PkgTmp,Busy%,Bzy_MHz --out "$to" \
+    local tf="$OUT/${name}-run${i}-k10temp.txt" sampler=""
+    if [ -n "$HWMON" ]; then
+      temp_sampler "$tf" "$HWMON" & sampler=$!
+    fi
+    turbostat --interval 5 --quiet -S --show PkgWatt,Busy%,Bzy_MHz --out "$to" \
       -- stress-ng "$@" --metrics-brief -t "$SECS" > "$so" 2>&1
+    [ -n "$sampler" ] && kill "$sampler" 2>/dev/null
     local b w f c
     b=$(bogo_from "$stressor" "$so"); w=$(col_avg PkgWatt "$to")
-    f=$(col_avg Bzy_MHz "$to");       c=$(col_avg PkgTmp "$to")
+    f=$(col_avg Bzy_MHz "$to")
+    c=$([ -s "$tf" ] && temp_max Tctl "$tf" || echo n/a)
     b=${b:-0}
     scores+=("$b"); watts+=("$w"); mhz+=("$f"); temp+=("$c")
-    printf '  run %d: %s bogo-ops/s   %s W   %s MHz   %s °C\n' "$i" "$b" "$w" "$f" "$c"
+    printf '  run %d: %s bogo-ops/s   %s W   %s MHz   Tctl max %s °C' "$i" "$b" "$w" "$f" "$c"
+    if [ -s "$tf" ]; then
+      printf '   (CCD1 %s / CCD2 %s)' "$(temp_max Tccd1 "$tf")" "$(temp_max Tccd2 "$tf")"
+    fi
+    echo
     sleep 15   # let temps settle between runs
   done
   local mb mw mf mc
   mb=$(median "${scores[@]}"); mw=$(median "${watts[@]}")
   mf=$(median "${mhz[@]}");    mc=$(median "${temp[@]}")
-  printf '  MEDIAN: %s bogo-ops/s   %s W   %s MHz   %s °C\n\n' "$mb" "$mw" "$mf" "$mc"
-  printf '%s\tmedian_bogo_ops_s=%s\tmedian_pkg_watt=%s\tmedian_bzy_mhz=%s\tmedian_pkg_tmp=%s\truns=%s\n' \
+  printf '  MEDIAN: %s bogo-ops/s   %s W   %s MHz   Tctl max %s °C\n\n' "$mb" "$mw" "$mf" "$mc"
+  printf '%s\tmedian_bogo_ops_s=%s\tmedian_pkg_watt=%s\tmedian_bzy_mhz=%s\tmedian_tctl_max=%s\truns=%s\n' \
     "$name" "$mb" "$mw" "$mf" "$mc" "$RUNS" >> "$OUT/summary.txt"
 }
+
+HWMON=$(k10temp_dir) || { echo "WARNING: no k10temp hwmon found — temperatures will read n/a"; HWMON=""; }
 
 : > "$OUT/summary.txt"
 run_set multicore matrix --matrix 0

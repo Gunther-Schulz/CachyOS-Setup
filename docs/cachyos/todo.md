@@ -34,7 +34,14 @@
   sudo ./tools/cpu-bench.sh eco-co              # after ECO + Curve Optimizer
   ```
   Runs the battery below 3× each and reports medians (single runs are noise), with `turbostat` logging power/clocks/temps *during* the load. Writes to `~/bench/<label>/`: raw output, turbostat logs, `summary.txt`, and **`conditions.txt`** — kernel, governor, EPP, power mode, RAM speed, loadavg. That last file is the point: `diff ~/bench/stock/conditions.txt ~/bench/eco/conditions.txt` catches a power-mode or RAM-speed change between runs, which is the failure that silently invalidates the whole comparison. Warns and pauses if loadavg > 1.5; settles 15 s between runs.
-  ✅ **Parsing verified against the first real run (2026-08-04)** — and it caught a bug, which is the point of checking. The bogo-ops extraction was correct; **`PkgWatt` came out `n/a`** because `turbostat --out` writes an elapsed-time line (`60.014170 sec`) *before* the column header, and the parser only looked at line 1. Fixed: the header is now found wherever it sits. Re-parsing the **saved** stock turbostat logs with the fixed code recovered the numbers, so no re-run was needed. Also changed: `CoreTmp` → **`PkgTmp`** (the `-S` summary row carries the package sensor; `CoreTmp` silently produced no column), and `Bzy_MHz` + `PkgTmp` now land in `summary.txt` alongside watts.
+  ✅ **RESULTS: [hardware/9950x3d-eco-expo.md](hardware/9950x3d-eco-expo.md).** Headline — ECO is binding (142.0 W pinned, exactly the 105 W tier's PPT), multicore **−12.4 %** for **−28.8 %** power = **+23 % perf/watt**, single-thread untouched.
+
+  **Script defect log — three found, all by running it rather than reading it:**
+  1. **`PkgWatt` → `n/a`.** `turbostat --out` writes an elapsed-time line (`60.014170 sec`) *before* the column header; the parser only looked at line 1. Fixed — the header is found wherever it sits. Re-parsing the **saved** stock logs recovered the numbers, so the unrepeatable baseline survived.
+  2. **`CoreTmp` produced no column** in the `-S` summary row. Changed to `PkgTmp`.
+  3. **`PkgTmp` produced no column either** (2026-08-04) — the `-S` header came back as literally `Busy% Bzy_MHz PkgWatt`. **turbostat exposes no temperature on this AMD platform**, so temperature was moved off it entirely and onto **`k10temp` via sysfs**, sampled every 2 s during the load. Strictly better: it gives **Tctl** (what the board's fan curve follows) *and* per-CCD temps, and on a 9950X3D the two CCDs differ sharply — measured 2026-08-04 at low load, **Tccd1 44.8 °C vs Tccd2 70.0 °C**. Verified producing real numbers before being relied on.
+
+  The pattern is worth keeping: each defect reported plausibly and measured nothing, and only executing the tool exposed it. `stock` and `eco-expo` therefore have **no temperature data**; the first run to carry it will be the post-CO one.
 
   **Stock baseline — 2026-08-03 23:06, 32 threads, `powersave`/`balance_performance`/`amd-pstate-epp`, GNOME power mode `balanced`, RAM 4800 MT/s (pre-EXPO), 3 × 60 s:**
 
