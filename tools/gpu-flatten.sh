@@ -55,9 +55,11 @@ done
 [ "$(id -u)" -eq 0 ] || { echo "needs root (nvcurve writes); re-run with sudo" >&2; exit 1; }
 
 home=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
-NVCURVE="$home/.local/bin/nvcurve"
-[ -x "$NVCURVE" ] || NVCURVE=$(command -v nvcurve) || true
-[ -n "${NVCURVE:-}" ] && [ -x "$NVCURVE" ] || { echo "nvcurve not found" >&2; exit 1; }
+NVCURVE=${NVCURVE:-$home/.local/bin/nvcurve}
+[ -x "$NVCURVE" ] || NVCURVE=$(command -v nvcurve 2>/dev/null) || true
+[ -n "${NVCURVE:-}" ] && [ -x "$NVCURVE" ] || {
+  echo "nvcurve not found. Install with: uv tool install nvcurve" >&2
+  echo "  or set NVCURVE=/path/to/nvcurve" >&2; exit 1; }
 
 if [ "$RESET" = 1 ]; then "$NVCURVE" write --reset; exit $?; fi
 [ "$ANCHOR_MV" -gt 0 ] && [ "$TARGET_MHZ" -gt 0 ] || { echo "need --mv and --mhz" >&2; usage 1; }

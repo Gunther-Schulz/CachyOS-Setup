@@ -62,9 +62,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ "$(id -u)" -eq 0 ] || { echo "needs root (applies curve edits); re-run with sudo" >&2; exit 1; }
-
-home=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
+home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FLATTEN="$HERE/gpu-flatten.sh"; SOAK="$HERE/gpu-soak.sh"
 [ -x "$FLATTEN" ] && [ -x "$SOAK" ] || { echo "gpu-flatten.sh / gpu-soak.sh missing" >&2; exit 1; }
@@ -75,7 +73,9 @@ LATEST="$STATE_DIR/explore-latest.tsv"
 
 # A run is UNFINISHED unless it wrote its completion marker. Checking for that is more
 # honest than inferring from the last line — a run killed between rungs looks tidy.
-unfinished() { [ -f "$1" ] && ! grep -q '^SWEEP\tCOMPLETE' "$1"; }
+# grep does not interpret \t, so '^SWEEP\tCOMPLETE' matched nothing and every run —
+# finished or not — was offered for resume. Match the field with awk instead.
+unfinished() { [ -f "$1" ] && ! awk -F'\t' '$1=="SWEEP" && $2=="COMPLETE"{f=1} END{exit !f}' "$1"; }
 newest_unfinished() {
   local f
   for f in $(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null); do
@@ -93,6 +93,10 @@ if [ "$STATUS" = 1 ]; then
   echo "run: $STATE"; echo
   exec "$HERE/gpu-ladder-report.sh" --state "$STATE"
 fi
+
+# Root is needed to WRITE curve edits. --status only reads, so the check lives here,
+# below the status branch — it sat above it before, gating a read-only operation.
+[ "$(id -u)" -eq 0 ] || { echo "needs root (applies curve edits); re-run with sudo" >&2; exit 1; }
 
 BASE_DONE=0
 declare -A ANCHOR_MAX ANCHOR_DONE
@@ -130,12 +134,30 @@ if [ "$RESUME" = 1 ]; then
       cur=${ANCHOR_MAX[$mv]:-0}; [ "$mhz" -gt "$cur" ] && ANCHOR_MAX[$mv]=$mhz
     elif [ "$verdict" = "FAIL" ]; then ANCHOR_DONE[$mv]=1; fi
   done < <(awk -F'\t' '$2=="FINISHED"{print $1"|"$3}' "$STATE")
-  HUNG=$(awk -F'\t' '$2=="STARTED"{s=$1} $2=="FINISHED"{if($1==s) s=""} END{print s}' "$STATE")
-  if [ -n "$HUNG" ]; then
-    mv=${HUNG%%mV/*}
-    echo "NOTE: ${HUNG} was interrupted — unproven, will be re-run."
-    [ "$HUNG" != "stock" ] && unset 'ANCHOR_DONE[$mv]'
+  # A rung that STARTED and never FINISHED ended one of two ways, and they demand
+  # OPPOSITE actions. The machine itself says which: if it booted AFTER that rung
+  # started, the rung took the machine down — re-running it would just crash again.
+  HUNG=$(awk -F'\t' '$2=="STARTED"{s=$1; t=$4} $2=="FINISHED"{if($1==s){s="";t=""}} END{print s"|"t}' "$STATE")
+  HUNG_LABEL=${HUNG%%|*}; HUNG_TS=${HUNG##*|}
+  if [ -n "$HUNG_LABEL" ]; then
+    mv=${HUNG_LABEL%%mV/*}
+    BOOT=$(date -d "$(uptime -s)" +%s 2>/dev/null || echo 0)
+    RUNG_T=$(date -d "$HUNG_TS" +%s 2>/dev/null || echo 0)
+    if [ "$BOOT" -gt "$RUNG_T" ] && [ "$RUNG_T" -gt 0 ]; then
+      echo "💥 ${HUNG_LABEL} HARD-LOCKED the machine (system booted $(( (BOOT-RUNG_T)/60 )) min after it started)."
+      echo "   Recording it as a FAILURE and moving on — retrying it would crash again."
+      printf '%s\tFINISHED\tFAIL\t%s\t\n' "$HUNG_LABEL" "$(date -Is)" >> "$STATE"; sync
+      [ "$HUNG_LABEL" != "stock" ] && ANCHOR_DONE[$mv]=1
+    else
+      echo "NOTE: ${HUNG_LABEL} was interrupted (no reboot since) — unproven, will be re-run."
+      [ "$HUNG_LABEL" != "stock" ] && unset 'ANCHOR_DONE[$mv]'
+    fi
   fi
+  # INTERRUPTED rungs are unproven too — clear any bound they wrongly implied.
+  while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    m=${l%%mV/*}; [ "$l" != "stock" ] && unset "ANCHOR_DONE[$m]"
+  done < <(awk -F'\t' '$3=="INTERRUPTED"{print $1}' "$STATE")
   echo "  baseline=$( [ "$BASE_DONE" = 1 ] && echo done || echo pending)  bounded anchors: ${!ANCHOR_DONE[*]:-none}"
 fi
 
@@ -235,10 +257,14 @@ run_rung() {   # $1 = label
   # Timestamp matching is guesswork that breaks whenever two runs land in the same second.
   out=$("$SOAK" --passes "$PASSES" --screen "$SCREEN" $WINDOWED 2>&1 | tee -a "${STATE%.tsv}.soaks.log" | awk '/^output:/{print $2}')
   rc=${PIPESTATUS[0]}
+  # 130/143 mean the soak was killed by SIGINT/SIGTERM — the operator interrupted it.
+  # That is UNPROVEN, not failed; recording it as FAIL would bound the anchor on no
+  # evidence and permanently hide a clock that was never actually tested.
   case "$rc" in
-    0) printf '%s\tFINISHED\tPASS\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
-    2) printf '%s\tFINISHED\tINCONCLUSIVE\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
-    *) printf '%s\tFINISHED\tFAIL\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    0)       printf '%s\tFINISHED\tPASS\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    2)       printf '%s\tFINISHED\tINCONCLUSIVE\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    130|143) printf '%s\tFINISHED\tINTERRUPTED\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    *)       printf '%s\tFINISHED\tFAIL\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
   esac
   sync; return $rc
 }

@@ -77,10 +77,26 @@ while [ $# -gt 0 ]; do
 done
 
 home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
-GM="$home/Downloads/GravityMark_1.89_linux/bin/GravityMark.x64"
-[ -x "$GM" ] || { echo "GravityMark not found at $GM" >&2
-                  echo "  adjust the path in this script, or reinstall from gravitymark.tellusim.com" >&2; exit 1; }
-NVCURVE="$home/.local/bin/nvcurve"
+
+# ── Tool discovery — portable, so these scripts work on another machine unchanged.
+# Each is overridable by environment variable; otherwise search the usual places.
+find_tool() {   # $1 = env var name, $2..= candidate paths (globs allowed)
+  local var=$1; shift
+  local v=${!var:-}
+  [ -n "$v" ] && [ -x "$v" ] && { echo "$v"; return 0; }
+  local c
+  for c in "$@"; do
+    for e in $c; do [ -x "$e" ] && { echo "$e"; return 0; }; done
+  done
+  return 1
+}
+GM=$(find_tool GRAVITYMARK \
+      "$home/Downloads/GravityMark_"*"_linux/bin/GravityMark.x64" \
+      "$home/dev/vendor/GravityMark"*"/bin/GravityMark.x64" \
+      "/opt/GravityMark"*"/bin/GravityMark.x64") || {
+  echo "GravityMark not found. Set GRAVITYMARK=/path/to/GravityMark.x64, or install from" >&2
+  echo "  https://gravitymark.tellusim.com/  (free .run self-installer)" >&2; exit 1; }
+NVCURVE=$(find_tool NVCURVE "$home/.local/bin/nvcurve" "$(command -v nvcurve 2>/dev/null)") || NVCURVE=""
 
 if [ -n "$OFFSET" ]; then
   [ "$(id -u)" -eq 0 ] || { echo "--offset needs root; re-run with sudo" >&2; exit 1; }
@@ -171,7 +187,7 @@ GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen "$SCRE
 # needs root. Drop to the invoking user, carrying the session environment across.
 AS_USER=()
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-  say "benchmark runs as $SUDO_USER (root has the wrong HOME and no display access)"
+  say "dropping privileges: benchmark runs as $SUDO_USER (root would have the wrong HOME and no display access)"
   AS_USER=( sudo -u "$SUDO_USER"
             DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}"
             XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")"
