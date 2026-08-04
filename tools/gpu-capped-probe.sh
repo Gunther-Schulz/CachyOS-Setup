@@ -35,6 +35,8 @@ set -uo pipefail
 export LC_ALL=C
 
 MV=0; MHZ=0; SECS=120; STOCK_ONLY=0; WIDTH=2560; HEIGHT=1440
+SETTLE_C=50         # start each run at or below this; the second run matches the first
+SETTLE_MAX=420      # seconds to wait for it before giving up and saying so
 
 usage() { sed -n '2,31p' "$0"; exit "${1:-0}"; }
 
@@ -46,6 +48,8 @@ while [ $# -gt 0 ]; do
     --width) WIDTH=$2; shift 2 ;;
     --height) HEIGHT=$2; shift 2 ;;
     --stock-only) STOCK_ONLY=1; shift ;;
+    --settle) SETTLE_C=$2; shift 2 ;;
+    --settle-max) SETTLE_MAX=$2; shift 2 ;;
     -h|--help) usage 0 ;;
     *) echo "unknown option: $1" >&2; usage 1 ;;
   esac
@@ -131,8 +135,27 @@ say "card is pinned AT the limit, so the same undervolt shows up as MORE CLOCK a
 say "same wattage. Same setting, two different payouts — this measures the second."
 say ""
 
+# WAIT FOR A MATCHED STARTING TEMPERATURE. At a fixed power cap the clock is whatever
+# the budget buys, and a hotter card leaks more, so start temperature moves the result
+# directly. Measured 2026-08-04: the second run started 34 C warmer than the first, which
+# handicaps it — a confound large enough to swamp the effect being measured.
+settle() {   # wait until the GPU is at or below $1 C, or $2 seconds elapse
+  local target=$1 budget=$2 t waited=0
+  t=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
+  [ "${t:-0}" -le "$target" ] && return 0
+  say "  cooling to <=${target}C before the run (now ${t}C, up to ${budget}s) ..."
+  while [ "$waited" -lt "$budget" ]; do
+    sleep 10; waited=$((waited+10))
+    t=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
+    [ "${t:-0}" -le "$target" ] && { say "  settled at ${t}C after ${waited}s"; return 0; }
+  done
+  say "  ⚠️ still ${t}C after ${budget}s — proceeding, the comparison carries a thermal bias"
+  return 1
+}
+
 say "[1/2] stock ..."
 "$NVCURVE" write --reset >/dev/null 2>&1
+settle "$SETTLE_C" "$SETTLE_MAX"
 probe stock || say "  (furmark exited non-zero — check $OUT/stock.furmark.txt)"
 read -r s_res s_fps s_fr s_clk s_w s_t0 s_tmax < <(readback stock)
 say "  rendered ${s_res}   FPS avg ${s_fps}   ${s_clk} MHz @ ${s_w} W   temp ${s_t0}->${s_tmax} C"
@@ -144,6 +167,9 @@ fi
 
 say ""
 say "[2/2] ${MV} mV / ${MHZ} MHz ..."
+# Match the FIRST run's actual starting temperature, not a fixed target — that is the
+# number the comparison has to hold constant.
+settle "$(cat "$OUT/stock.starttemp" 2>/dev/null || echo "$SETTLE_C")" "$SETTLE_MAX"
 "$FLATTEN" --mv "$MV" --mhz "$MHZ" >"$OUT/flatten.log" 2>&1 || {
   say "  FLATTEN REFUSED — see $OUT/flatten.log. Nothing was applied; stock result above stands."
   exit 1; }
@@ -172,12 +198,26 @@ BEGIN {
     print "  NOTE: stock did not reach the power cap, so this was not the capped regime."
     print "  The comparison below is not the one this tool is for."
   }
-  if (cc > sc*1.01 && cw >= sw*0.98)
-    printf "  ► GAIN: %+.1f%% clock at the same power. This is the capped-regime payout —\n    the setting converts saved voltage into speed instead of into watts.\n", (cc/sc-1)*100
+  # THE VERDICT READS FPS, NOT CLOCK. Reported clock is the number this whole project
+  # has proven unreliable, and the capped regime is where it is worst: measured
+  # 2026-08-04, stock reported 2508 MHz and delivered 445 FPS while the setting reported
+  # 2200 MHz and delivered 457 FPS. FurMark is a fixed shader load, so a card genuinely
+  # running 14% faster cannot produce FEWER frames. The stock reading is inflated — it is
+  # stretching under the cap — and a clock-based verdict called that a loss.
+  if (!same || sf<=0) {
+    print "  ► Cannot judge: the two runs rendered at different sizes, so FPS is not"
+    print "    comparable, and reported clock is not trustworthy enough to decide on."
+  }
+  else if (cf > sf*1.01 && cw >= sw*0.98)
+    printf "  ► GAIN: %+.1f%% MORE WORK at the same power. This is the capped-regime\n    payout — the setting converts saved voltage into throughput, not watts.\n", (cf/sf-1)*100
   else if (cw < sw*0.97)
-    printf "  ► The card did NOT stay pinned at the cap (%.0f W -> %.0f W), so the payout\n    came as less power, not more clock. That is the coasting result.\n", sw, cw
+    printf "  ► The card did NOT stay pinned at the cap (%.0f W -> %.0f W), so the payout\n    came as less power, not more work. That is the coasting result.\n", sw, cw
+  else if (cf < sf*0.99)
+    printf "  ► SLOWER by %.1f%% at the same power — the setting costs throughput here.\n", (1-cf/sf)*100
   else
-    print  "  ► No clock gain in the capped regime. The setting pays out as lower power in\n    coasting loads only — which is still the result that matters for most games."
+    print  "  ► No throughput change in the capped regime. The setting pays out as lower\n    power in coasting loads only — still the result that matters for most games."
+  if (cc < sc*0.98 && cf > sf*1.01)
+    printf "\n  NOTE: reported clock FELL %.1f%% while delivered work ROSE %.1f%%. A fixed\n    shader load cannot do that if both clocks were real — the higher reading is\n    the false one. Judge this regime on FPS only.\n", (1-cc/sc)*100, (cf/sf-1)*100
   if (st>0 && ct>0 && (ct-st) > 8)
     printf "\n  ⚠️ the second run started %d C warmer (%d -> %d). At a fixed power cap a hotter\n     card buys less clock, so this comparison is biased AGAINST the setting.\n", ct-st, st, ct
 }'| tee -a "$LOG"
