@@ -401,7 +401,34 @@
   **Sequencing (operator decisions 2026-08-03): proceed now rather than waiting for board clearance, and set EXPO + ECO + CO in ONE BIOS visit.** Basis: ~a week without random reboots as the baseline, and `rasdaemon` now running to catch corrected errors persistently.
   **Attribution comes from the TEST SUITE, not from staging the changes** — each test isolates one variable, so one visit is fine provided the suite actually gets run, in this order:
   1. **Memtest86+ ≥4 passes** → isolates EXPO/RAM. Passing clears the memory path.
-  2. **Per-core `mprime`** (`taskset -c N`, SSE first then AVX2, ~10 min/core, scripted overnight) → isolates CO. CO instability is **core-specific and reproducible**; board damage is not. A single failing core = that core's offset, not the board.
+  2. **Per-core CO validation — READY, run all three detectors (operator decision 2026-08-04).** Isolates CO: instability is **core-specific and reproducible**, board damage is not, so a single failing core means that core's offset rather than the board.
+
+     **Why this is a deliberate test and not a waiting game.** Negative CO does not fail "at idle" in the literal sense; it fails where voltage is lowest *relative to the demanded frequency* — one or two cores boosting to ~5.4 GHz while the rest sleep. `taskset`-pinning one thread to one core recreates exactly that, so the crash lands in a window chosen on purpose instead of during work. That is the point of the per-core pass; thoroughness is secondary.
+
+     **Three detectors, weakest → strongest. Run all three; a pass on a weak one is not evidence of a pass on a strong one.**
+
+     | Tool | Package | Sensitivity to CO |
+     |---|---|---|
+     | `stress-ng --cpu 1 --cpu-method fft` | `stress-ng` (repo, **installed**) | weak — a pass is encouraging, not evidence |
+     | `y-cruncher` | AUR `y-cruncher` (verified present 2026-08-04) | strong — different math paths |
+     | `mprime` small-FFT | AUR `mprime` (verified present 2026-08-04, maint. graysky) | strongest for CO; SSE first, then AVX2 |
+
+     Skeleton — one thread, one core, cycling:
+     ```fish
+     for c in (seq 0 31)
+         echo "core $c"
+         taskset -c $c stress-ng --cpu 1 --cpu-method fft -t 60
+     end
+     ```
+     ~10 min/core for the `mprime` pass, so script it and run it overnight.
+
+     **Start at CO −10, not −15.** Materially less likely to be unstable, still worth real voltage at the boost point, and one extra BIOS trip is cheaper than a crash during work. Step to −15 after a clean pass.
+
+     **Read the early-warning channel after every stage:** `sudo ras-mc-ctl --errors`. CO instability often throws a corrected **Cache Hierarchy** error *before* it crashes — back off 5 on that core even without a crash. ⚠️ The MCE at **2026-08-04 09:36:00** is the synthetic injection; anything after it is real.
+
+     **Recovery if a setting will not POST:** rear-IO **CMOS clear button** (section A).
+
+     **Done when:** all 32 logical cores pass all three detectors at the chosen offset, plus the idle soak below. **Honest limit:** no test proves stability — it moves discovery earlier.
   3. **`y-cruncher`** component tests → different math paths, catches what mprime misses.
   4. **Idle soak, a full day** → CO fails at idle/light load, not only under stress. Watch `ras-mc-ctl --errors`: corrected Cache Hierarchy errors = back off 5 on that core even without a crash.
   **CPU power policy — decided 2026-08-03: leave CachyOS defaults alone, GNOME power mode = *Balanced*, done.** One knob: **BIOS ECO mode is the only power-envelope control**. Balanced gives `powersave` + `EPP=balance_performance`; full boost under load (the hardware decides via CPPC either way), lower idle clocks, and no measurable difference in sustained all-core work — where ECO binds anyway. **The only hard requirement: do not change the power mode between the before and after benchmark runs**, or the comparison measures the profile instead of ECO/CO. Set on this machine via `Settings → Power → Power Mode` (or the top-right quick-settings menu); verify with `powerprofilesctl get`.
