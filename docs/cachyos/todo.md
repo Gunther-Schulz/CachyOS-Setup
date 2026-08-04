@@ -83,6 +83,29 @@
 
   **Still open:** the root-run hotspot value has not been captured (needs an operator `sudo` run), so the sensor-array scan is unconfirmed on this specific card. If Hot Spot shows `n/a` under root, `--sensors` dumps the raw array for a bug report.
 
+- **Desktop — BIOS update: researched 2026-08-04, verdict DO NOT UPDATE NOW. It is the contingency if EXPO validation fails, not a preemptive action.**
+
+  Current **1402** (2025-11-12, AGESA ComboAM5 PI 1.2.7.0). Six releases exist since, read verbatim from the [ASUS support page](https://www.asus.com/us/supportonly/rog%20strix%20b850-g%20gaming%20wifi/helpdesk_bios/) for this exact model:
+
+  | Version | Date | AGESA | Relevant content |
+  |---|---|---|---|
+  | 1627 | 2026-02-11 | Pre1.3.0.0 | security; "memory compatibility for **JEDEC-compliant** modules" |
+  | **1644** | 2026-03-23 | 1.3.0.0a | **"additional stability margin during high-frequency DDR5 training"**; "boot failures … on certain Ryzen 9000 configurations" |
+  | 1654 β | 2026-04-27 | 1.3.0.1 | 9950X3D**2 Dual Edition** — a different SKU. **No rollback after this.** |
+  | 1670 β | 2026-04-29 | — | "New memory profile support" |
+  | 1681 | 2026-06-22 | 1.3.0.1b | EXPO **ULL** profiles; ECC-UDIMM performance |
+  | 1686 β | 2026-07-02 | 1.3.0.1b Patch A | restores **TSME** memory encryption on Ryzen 9000 non-PRO |
+
+  **Why not now:** no changelog anywhere in 1402→1686 mentions dual-rank, 2-DIMM, or any 6000 MT/s-specific fix. Meanwhile the machine is mid-validation with a **just-applied EXPO + ECO** config and ~a week of reboot-free uptime as the diagnostic baseline — flashing resets that baseline and injects a firmware variable into the one window whose purpose is attribution. Settings retention across a flash is **unconfirmed** (ASUS's own EZ Flash FAQ advises manually loading defaults afterwards), and OC Profile saves are version-locked by long-standing ASUS behaviour, so everything would be re-entered by hand.
+
+  **The decision rule that makes this useful — if EXPO fails Memtest at 6000, flash 1644+ BEFORE concluding bad RAM or a damaged board.** 1644's "additional stability margin during high-frequency DDR5 training" is the one plausibly on-target item, and a memory-training firmware bug is indistinguishable from marginal hardware by symptom. This inserts a cheap step ahead of the RMA branch in section B, where getting it wrong is expensive.
+
+  **Also relevant, not a reason to update:** 1402 itself is not clean — ASUS confirmed a memory-training bug on the sibling B850-A (4×32 GB configs locked to 3600 MT/s, DOCP/XMP boot failures, no fix timeline). That report is **4-DIMM-specific**; this machine is 2-DIMM, so it likely does not apply — but "1402 is a known-good version" is not a claim the record supports.
+
+  **Flashing facts** (for when it happens): **not on LVFS/fwupd** — no `fwupdmgr` path, so this stays a manual job. **USB BIOS FlashBack** (rear-IO button, no CPU/RAM needed) is present, and EZ Flash 3 needs a **FAT32** stick. **Every release in this window requires renaming the `.CAP` file with ASUS's BIOSRenamer tool first** — that note appears verbatim in all six changelogs. Screenshot the EXPO/ECO/PBO pages with F12 before flashing rather than trusting OC Profile. Disconnect internal USB peripherals first — a 40-minute POST-code-D6 hang during a flash on a sibling board traced to a connected Corsair hub and AIO.
+
+  **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
+
 - **Desktop — READY: GPU stress test, to be run alongside `nvidia-gpu-sensors --watch`.** The point is not "does it crash" but capturing **hotspot-minus-edge under sustained load** — the delta that reveals a bad mount or dried thermal pads, and which idles at 8 °C on this card. Two load types, both needed, because they stress different things:
 
   | Tool | Install | Run | What it loads |
@@ -108,6 +131,16 @@
   - Laptop: not yet surveyed. Once anything is actually applied, graduate to `hardware/nvme-firmware.md` + a README index row.
 - **Both machines — `fwupdmgr` cadence + one pending item.** `sudo fwupdmgr refresh && sudo fwupdmgr get-updates` is read-only (metadata download + listing; `fwupdmgr update` is the part that flashes) — safe to run monthly or before/after a BIOS change. Desktop as of 2026-08-03: 11 devices updatable, no SSD or System Firmware releases, one **pending** — UEFI dbx `20250902 → 20260402`, urgency High, CVE-2026-8863. **Secure Boot is disabled on the desktop** (`bootctl status`, 2026-08-03) — so the revocation list is not consulted at boot: the update is inert *and* riskless here. The brick scenario (a dbx revoking the running bootloader's signature) requires Secure Boot enabled; it does not apply. Apply it anyway when convenient — `sudo fwupdmgr update`, needs a reboot — because it clears the only pending entry, which keeps future `get-updates` output signal rather than noise, and pre-positions the machine if Secure Boot is ever turned on. `mokutil` is not installed; use `bootctl status | grep -i "secure boot"`.
 - **Desktop — PARKED: one recent freeze, cause unknown.** Deliberately not diagnosed yet (operator: track it, don't investigate now). **Still open as candidate causes, none re-verified:** ⚠️ **NVIDIA GSP-RM heartbeat timeout on S3 resume** ([issues/known-issues.md](issues/known-issues.md)) — the strongest lead by symptom match: documented on this exact GPU, freezes ~1 s after wake, requires a hard power cycle, and is recorded as having **no confirmed workaround**. Written against driver 595.45.04; the machine now runs 610.43.03 and it has not been re-tested — so it is neither known-broken nor known-fixed. Also: spd5118 suspend abort ([system/sleep.md](system/sleep.md)), RTX 5090 + IOMMU ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)), GPU hang (`tools/gpu-hang-watch.sh` — written for Marvel Rivals specifically, so its Xid watch is narrower than "any freeze"). Each has a fix documented as applied; whether it still fires is unchecked, and "documented as applied" is not the same as "verified working" — the doc says what was done, the machine says what happens. Missing evidence to unpark: the journal around the event — `journalctl -k -b -1 -e` (or `-b -2`) run soon after, plus what the machine was doing (idle/sleep, gaming, desktop). Journald persistence is **confirmed on** (`/var/log/journal/` exists with a machine-id dir, 2026-08-03), so a hard power-cycle still leaves the previous boot readable via `-b -1` — the evidence survives the freeze. Also worth knowing before testing: the active sleep mode is **`deep` (S3)**, not s2idle (`/sys/power/mem_sleep` → `s2idle [deep]`), i.e. exactly the mode with the documented hard-lock. Does **not** implicate the drives — SMART clean on all three (above).
+
+  **🔎 NEW LEAD 2026-08-04 — PCIe Gen 5 NVMe link/ASPM instability, and it matches better than anything else on this list.** An ASUS ROG forum bug report on **the same CPU** (9950X3D, board X870E-H) describes **system freezes at idle / low load**; a follow-up from the reporter (2026-04-18) identifies the root cause as **PCIe Gen 5 NVMe link + ASPM instability, not the BIOS or AGESA** — freezes "drastically reduced but not eliminated" after forcing the drive to Gen 4. Threads: [initial](https://rog-forum.asus.com/t5/amd-800-series/bug-report-system-freezes-at-idle-low-load-asus-x870e-h-ryzen-9/td-p/1141620), [root cause](https://rog-forum.asus.com/t5/amd-800-series/update-x870e-h-9950x3d-idle-freeze-pcie-gen-5-nvme-root-cause/td-p/1146380). Different board, so relevance is inferential — but **this machine has the matching hardware, confirmed 2026-08-04:**
+
+  | Device | Model | Link |
+  |---|---|---|
+  | `nvme0` | Samsung SSD 990 PRO 4TB | 16.0 GT/s ×4 (Gen 4) |
+  | `nvme1` | Samsung SSD 990 PRO 2TB | 16.0 GT/s ×4 (Gen 4) |
+  | **`nvme2`** | **Samsung SSD 9100 PRO 4TB** | **32.0 GT/s ×4 — Gen 5** |
+
+  ASPM policy is `[default]` (`/sys/module/pcie_aspm/parameters/policy`). Why this lead outranks the others: it matches the symptom (freeze at **idle**, not under load or on resume) where the GSP-RM lead matches only S3 resume, and it matches the CPU exactly. **Cheap falsification test, no hardware change:** boot with `pcie_aspm=off` on the kernel cmdline and see whether idle freezes stop. If they do, the permanent fix is either forcing `nvme2` to Gen 4 in the BIOS or a per-device ASPM disable — and that turns a parked mystery into a settled one. **Do not run this test during EXPO/CO validation** — it adds a variable to a window whose whole purpose is attribution.
 - **Desktop — NEXT BIOS VISIT: ordered checklist.** Already verified from Linux, do **not** change: **Resizable BAR ON** (`nvidia-smi` BAR1 = 32768 MiB ≈ full VRAM; 256 MiB would mean off), **PCIe Gen 5 × 16** at max, `iommu=pt` on the cmdline ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)). So Above 4G Decoding / ReBAR are correct already.
 
   **✅ APPLIED 2026-08-04** — read off the *Save Changes & Reset* confirmation screen (photographed), which is the authoritative diff of the visit:
@@ -159,6 +192,18 @@
        - JEDEC **also** fails → it is the RAM or the board — that is the surge signal, escalate to the RMA decision.
   7. **Expect a slow first EXPO boot:** 1–5 minutes of black screen with fans spinning is memory training on 64 GB dual-rank, not a dead board; it may self-power-cycle. Only if it truly will not post, clear CMOS (rear-IO button). **Note what EXPO sets** — frequency, timings, VDD/VDDQ, SoC voltage — before leaving the screen, so stepping down to 5600 manually is possible without re-picking a profile.
   8. `rasdaemon` (now running) is the backstop for marginal-but-passing EXPO: corrected errors land in `ras-mc-ctl --errors` and persist across reboots. Baseline as of 2026-08-03 is **no errors in any class**.
+
+     ⚠️ **That baseline is half-blind — the instrument was never proven live (found 2026-08-04).** `ras-mc-ctl --errors` reports two lanes and only one of them has a source on this machine:
+     - **MCE lane — live.** `journalctl -k` shows `MCE: In-kernel MCE decoding enabled` and `RAS: Correctable Errors collector initialized`. "No MCE errors" is a real negative.
+     - **Memory/EDAC lane — DEAD.** `/sys/devices/system/edac/mc/` contains **no `mc0`**, i.e. no memory controller is registered. `amd64_edac` exists as a module (`/lib/modules/7.1.5-1-cachyos/kernel/drivers/edac/amd64_edac.ko.zst`) but is **not loaded** — `lsmod` shows nothing matching `edac`. So "No Memory errors" is what a dead lane returns, indistinguishable from a true absence.
+
+     This is the classic unproven-checker shape: the watch was installed as the safety net for EXPO validation and CO stability, and half of it reports clean because nothing is wired to it. **Fix before trusting the EXPO/CO results:**
+     ```fish
+     sudo modprobe amd64_edac
+     ls /sys/devices/system/edac/mc/          # must now show mc0
+     sudo ras-mc-ctl --status
+     ```
+     If `mc0` appears, persist it with `/etc/modules-load.d/`. If the modprobe fails, that is itself the answer — Zen 5 (family 1Ah) memory-controller support may not be in this kernel's `amd64_edac`, in which case **record that the EDAC lane is permanently unavailable here** so a future session does not read its silence as health. Either way the MCE lane still catches uncorrectable events, which is the one that matters most for CO instability.
 
   **C — CPU tuning. Paths, per the ASUS 800-series BIOS manual (E25269):**
   - **Curve Optimizer — path CONFIRMED from the live screen 2026-08-04** (photographed), not from the manual: `Advanced → AMD Overclocking → AMD Overclocking → Precision Boost Overdrive → Curve Optimizer`. Note `AMD Overclocking` appears **twice** in the breadcrumb; that is the real path.
