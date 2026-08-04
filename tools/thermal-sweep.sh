@@ -122,8 +122,13 @@ sampler() {
   done > "$out"
 }
 
-# peak of column $1 (1-indexed) in file $2, scaled by $3
-peak() { awk -v c="$1" -v s="$3" '$c+0>m{m=$c+0} END{if(m) printf "%.1f", m/s; else print "-"}' "$2"; }
+# peak of column $1 (1-indexed) in file $2, scaled by $3.
+# `seen` rather than testing the max: a genuine ZERO is data — a stopped fan
+# reads 0 rpm — and testing the value would report it as missing.
+peak() {
+  awk -v c="$1" -v s="$3" '{ v=$c+0; if (!seen || v>m) { m=v; seen=1 } }
+                           END{ if (seen) printf "%.1f", m/s; else print "-" }' "$2"
+}
 
 # Integer maths only — no bc, no %f. Both were locale traps.
 now_line() {   # live one-liner while a phase runs

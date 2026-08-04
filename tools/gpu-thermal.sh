@@ -84,29 +84,50 @@ read_sensors() {
     }'
 }
 
+# nvidia-smi's fan.speed covers the GPU's OWN fans only — it cannot see the case
+# or AIO fans. Those live on the motherboard's nct6799 and matter here: a 575 W
+# load heats the case, so chassis fans are part of how loud a GPU test gets.
+# fan1 = Arctic P12 case fans, whose header reports 2 tach pulses/rev, so the raw
+# value is halved; fan2 = Silent Wings 4 on the AIO radiator, correct as reported.
+# (Channel map: fan-control/coolercontrol-labels.md.)
+MB=""
+for h in /sys/class/hwmon/hwmon*; do
+  [ "$(cat "$h/name" 2>/dev/null)" = nct6799 ] && { MB="$h"; break; }
+done
+
 sample_once() {
-  local s smi
+  local s smi case_rpm=n/a aio_rpm=n/a
   s=$(read_sensors)
   smi=$(nvidia-smi --query-gpu=fan.speed,power.draw,clocks.sm,utilization.gpu \
         --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' | tr ',' ' ')
-  echo "$(date +%s) ${s:-n/a n/a n/a n/a n/a} ${smi:-n/a n/a n/a n/a}"
+  if [ -n "$MB" ]; then
+    case_rpm=$(( $(cat "$MB/fan1_input" 2>/dev/null || echo 0) / 2 ))
+    aio_rpm=$(cat "$MB/fan2_input" 2>/dev/null || echo 0)
+  fi
+  echo "$(date +%s) ${s:-n/a n/a n/a n/a n/a} ${smi:-n/a n/a n/a n/a} $case_rpm $aio_rpm"
 }
 
 sampler() { while :; do sample_once; sleep 2; done > "$1"; }
 
-# max of column $1 over file $2, ignoring n/a
+# max of column $1 over file $2, ignoring n/a.
+# `seen` is not decoration: testing the max itself would print n/a for a real
+# ZERO, and a stopped GPU fan reads exactly 0 — that is data, not absence.
 colmax() {
-  awk -v c="$1" '$c!="n/a" && $c+0>m {m=$c+0} END{if(m) printf "%.1f", m; else print "n/a"}' "$2"
+  awk -v c="$1" '$c!="n/a" { v=$c+0; if (!seen || v>m) { m=v; seen=1 } }
+                 END{ if (seen) printf "%.1f", m; else print "n/a" }' "$2"
 }
 # largest (hotspot - core) seen in any single sample: cols 4 and 2
 maxdelta() {
-  awk '$2!="n/a" && $4!="n/a" { d=$4-$2; if (d>m) m=d } END{if(m) printf "%.1f", m; else print "n/a"}' "$1"
+  awk '$2!="n/a" && $4!="n/a" { d=$4-$2; if (!seen || d>m) { m=d; seen=1 } }
+       END{ if (seen) printf "%.1f", m; else print "n/a" }' "$1"
 }
 
 report() {   # $1=phase label  $2=file
-  printf '  %-8s core %s °C   mem %s °C   hotspot %s °C   Δhot-core %s °C   fan %s%%   %s W   %s MHz\n' \
-    "$1" "$(colmax 2 "$2")" "$(colmax 3 "$2")" "$(colmax 4 "$2")" "$(maxdelta "$2")" \
-    "$(colmax 7 "$2")" "$(colmax 8 "$2")" "$(colmax 9 "$2")"
+  printf '  %-5s core %s  mem %s  hotspot %s  Δhot-core %s °C\n' \
+    "$1" "$(colmax 2 "$2")" "$(colmax 3 "$2")" "$(colmax 4 "$2")" "$(maxdelta "$2")"
+  printf '        %s W  %s MHz   fans: GPU %s%%  case %s rpm  AIO %s rpm\n' \
+    "$(colmax 8 "$2")" "$(colmax 9 "$2")" "$(colmax 7 "$2")" \
+    "$(colmax 11 "$2")" "$(colmax 12 "$2")"
 }
 
 cat <<EOF
@@ -156,7 +177,10 @@ chown -R "${SUDO_USER:-root}" "${home:-/root}/bench" 2>/dev/null
 cat <<EOF
 
 Per-sample data: $OUT/{idle,load}.txt
-  columns: epoch core mem hotspot nvvdd msvdd fan% watts sm_mhz util%
+  columns: epoch core mem hotspot nvvdd msvdd gpufan% watts sm_mhz util% case_rpm aio_rpm
+  gpufan% is the GPU's own fans (nvidia-smi); case/AIO come from the
+  motherboard nct6799 — nvidia-smi cannot see those. case_rpm is halved,
+  the header reports 2 tach pulses/rev.
 Load tool output: $OUT/load-tool.log
 Compare: diff $OUT/summary.txt ~/bench/gpu-<other>/summary.txt
 
