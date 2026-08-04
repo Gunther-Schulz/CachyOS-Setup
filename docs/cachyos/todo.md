@@ -212,6 +212,31 @@
   two-profile scheme (`quiet` / `performance`) is more than is needed** — one good
   flatten covers both.
 
+  ### Why the tuning measures GravityMark and only *watches* FurMark
+
+  The same flatten has **opposite effects** depending on whether the card is power-capped:
+
+  | Regime | Measured on this card | Effect of a lower anchor |
+  |---|---|---|
+  | **Coasting** — GravityMark | 2 803 MHz at **371 W of 575** | it was already as fast as its voltage allows, so less voltage means **less clock — you LOSE** |
+  | **Capped** — FurMark, heavy 4K games | 2 442 MHz at **575 W pinned** | it was being held back by the power limit; less voltage per MHz lets it clock **UP inside the same budget — you GAIN** |
+
+  **So tune in the regime where the change can hurt you.** Every stop rule — crossover,
+  plateau, regression, spread — reads the **GravityMark** soak. Protect performance there
+  and the capped regime can only improve, because that is the case where lower voltage is
+  pure upside. **Tune for the hard case, get the easy one free.**
+
+  FurMark is therefore *measured but never decided on*: `furmark_probe` runs at the
+  baseline and at the confirmed setting purely to quantify the free half. It feeds no
+  decision, by design. (This is also where the forum report's +7.2 % lives — his card was
+  capped at stock, ours is not, so his headline gain shows up on this machine only in the
+  capped regime.)
+
+  ⚠️ **The premise: your games look like GravityMark, not FurMark.** If the titles you
+  actually play *do* pin 575 W, the tuning is conservative — optimising the harder case
+  and leaving free gain uncollected in the one that matters. Safe direction to be wrong
+  in, but worth re-checking if a game turns out to sit at the cap.
+
   **Success criterion for the running ladder:** the first target whose *delivered* clock
   beats stock **2 803 MHz** while power stays near **318 W**. That is faster than stock on
   75 mV less. Expect ~120 MHz of boost derating between target and delivered — seen at
