@@ -135,24 +135,49 @@ if [ "$RESUME" = 1 ]; then
     elif [ "$verdict" = "FAIL" ]; then ANCHOR_DONE[$mv]=1; fi
   done < <(awk -F'\t' '$2=="FINISHED"{print $1"|"$3}' "$STATE")
   # A rung that STARTED and never FINISHED ended one of two ways, and they demand
-  # OPPOSITE actions. The machine itself says which: if it booted AFTER that rung
-  # started, the rung took the machine down — re-running it would just crash again.
+  # OPPOSITE actions: a hard lock must NOT be retried (it would crash again), while an
+  # interrupt is simply unproven and should be. A reboot after the rung started is
+  # SUGGESTIVE but proves nothing — the operator may have rebooted for a kernel update,
+  # lost power, or just chosen to. So the evidence is shown and the OPERATOR decides.
   HUNG=$(awk -F'\t' '$2=="STARTED"{s=$1; t=$4} $2=="FINISHED"{if($1==s){s="";t=""}} END{print s"|"t}' "$STATE")
   HUNG_LABEL=${HUNG%%|*}; HUNG_TS=${HUNG##*|}
   if [ -n "$HUNG_LABEL" ]; then
     mv=${HUNG_LABEL%%mV/*}
     BOOT=$(date -d "$(uptime -s)" +%s 2>/dev/null || echo 0)
     RUNG_T=$(date -d "$HUNG_TS" +%s 2>/dev/null || echo 0)
+    echo
+    echo "❓ ${HUNG_LABEL} started but never finished. Evidence:"
+    echo "     started:        $HUNG_TS"
     if [ "$BOOT" -gt "$RUNG_T" ] && [ "$RUNG_T" -gt 0 ]; then
-      echo "💥 ${HUNG_LABEL} HARD-LOCKED the machine (system booted $(( (BOOT-RUNG_T)/60 )) min after it started)."
-      echo "   Recording it as a FAILURE and moving on — retrying it would crash again."
-      printf '%s\tFINISHED\tFAIL\t%s\t\n' "$HUNG_LABEL" "$(date -Is)" >> "$STATE"; sync
-      [ "$HUNG_LABEL" != "stock" ] && ANCHOR_DONE[$mv]=1
+      echo "     system booted:  $(uptime -s)  — $(( (BOOT-RUNG_T)/60 )) min AFTER it started"
+      echo "                     (consistent with a hard lock, but a reboot has other causes)"
     else
-      echo "NOTE: ${HUNG_LABEL} was interrupted (no reboot since) — unproven, will be re-run."
-      [ "$HUNG_LABEL" != "stock" ] && unset 'ANCHOR_DONE[$mv]'
+      echo "     system booted:  $(uptime -s)  — BEFORE it started, so no reboot since"
+      echo "                     (so this was an interrupt, not a machine crash)"
     fi
+    XIDN=$(journalctl -k -b -1 --since "$HUNG_TS" 2>/dev/null | grep -ci xid || true)
+    echo "     Xid in previous boot after that time: ${XIDN:-0}"
+    echo
+    if [ -t 0 ] || [ -e /dev/tty ]; then
+      echo "  Did this rung CRASH the machine?"
+      echo "    [y] yes — record it as a FAILURE and do not retry (safe default)"
+      echo "    [n] no  — it was interrupted; retest it as unproven"
+      printf '  choice [y/n]: '
+      read -r hc < /dev/tty 2>/dev/null || hc=y
+    else
+      hc=y
+      echo "  (no terminal — defaulting to 'crashed'. Retrying a crashing rung unattended"
+      echo "   would loop; a wrongly skipped rung merely goes untested.)"
+    fi
+    case "${hc:-y}" in
+      n|N) echo "  → treating ${HUNG_LABEL} as unproven; it will be re-run."
+           [ "$HUNG_LABEL" != "stock" ] && unset 'ANCHOR_DONE[$mv]' ;;
+      *)   echo "  → recording ${HUNG_LABEL} as a FAILURE; moving on."
+           printf '%s\tFINISHED\tFAIL\t%s\t\n' "$HUNG_LABEL" "$(date -Is)" >> "$STATE"; sync
+           [ "$HUNG_LABEL" != "stock" ] && ANCHOR_DONE[$mv]=1 ;;
+    esac
   fi
+
   # INTERRUPTED rungs are unproven too — clear any bound they wrongly implied.
   while IFS= read -r l; do
     [ -n "$l" ] || continue
