@@ -384,18 +384,68 @@ worth_continuing() {   # $1 = this rung, $2 = previous rung (may be empty)
 # the same session, so the pair is comparable.
 furmark_probe() {   # $1 = label for the log
   command -v furmark >/dev/null || { say "  (furmark not installed — skipping the capped-regime probe)"; return; }
-  local f="${STATE%.tsv}.furmark-$1.txt"
+  # PER-RUN FILENAME. This was "${STATE%.tsv}.furmark-$1.txt" — one fixed name per label,
+  # so every probe overwrote the last and only the final one survived. Four stock probes
+  # were taken on 2026-08-04 and three were unrecoverable except as one-line log summaries;
+  # the temperature ramp that would have explained a low outlier was simply gone. A probe
+  # that decides nothing still has to be re-readable, or it cannot settle a later question.
+  local f="${STATE%.tsv}.furmark-$1-$(date +%H%M%S).txt"
   ( for i in $(seq 1 40); do
       nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits \
         | tr -d ' ' | tr ',' ' '; sleep 3
     done > "$f" ) &
   local sp=$!
+  # KEEP THE OUTPUT. It was going to /dev/null, which is why a real FPS discrepancy
+  # between two probes could not be explained afterwards: FurMark prints the resolution it
+  # ACTUALLY rendered, the frame count and min/avg/max FPS, and every one of those was
+  # being deleted. A probe that discards the only number capable of settling a later
+  # question is not cheaper, it is useless later.
+  #
+  # DELIBERATELY NOT --fullscreen. Without it the window manager sizes the window and
+  # FurMark renders to the WINDOW rather than to --width/--height: on this machine it
+  # asks for 2560x1440 and renders 2509x1371, because a dock shrinks the window. Adding
+  # --fullscreen would be tidier in the abstract and WRONG here — it changes the render
+  # size, breaking comparability with every probe recorded so far. The operator confirms
+  # the size has been constant across all runs (2026-08-04), so it is a fixed property of
+  # this setup, not a variable. The check below is what guards it: if the rendered size
+  # ever changes, the log says so instead of quietly shifting the FPS.
+  local out="${f%.txt}.furmark-out.txt"
   timeout -k 10 150 furmark --demo furmark-vk --width 2560 --height 1440 \
-      --max-time 120 --no-score-box >/dev/null 2>&1
+      --max-time 120 --no-score-box >"$out" 2>&1
   kill $sp 2>/dev/null
+  # Surface the rendered resolution and FPS. If the resolution is not what was asked for,
+  # say so loudly — every comparison against another probe is void.
+  awk -F: '/resolution/ {gsub(/ /,"",$2); res=$2}
+           /FPS \(min\/avg\/max\)/ {gsub(/^ +/,"",$2); fps=$2}
+           /frames/ {gsub(/ /,"",$2); fr=$2}
+           END { if (res!="") printf "  FurMark rendered %s   FPS min/avg/max %s   frames %s\n", res, fps, fr
+                 print res > "/dev/stderr" }' \
+      "$out" 2>"${f%.txt}.res" | tee -a "${STATE%.tsv}.log"
+  # Compare against the size the PREVIOUS probe rendered. The requested size is not the
+  # reference — the window manager overrides it and always has here. What matters is that
+  # it does not CHANGE, because FPS moves with pixel count at an identical clock.
+  local seen="$STATE_DIR/.furmark-render-size"
+  local now; now=$(tr -d ' \n' < "${f%.txt}.res" 2>/dev/null)
+  if [ -n "$now" ]; then
+    if [ -f "$seen" ] && [ "$(cat "$seen")" != "$now" ]; then
+      say "  ⚠️ RENDER SIZE CHANGED: $(cat "$seen") -> ${now}. FurMark FPS is NOT comparable"
+      say "     with earlier probes — fewer or more pixels at the same clock. Everything"
+      say "     else (MHz, W, temp) is still comparable."
+    fi
+    printf '%s' "$now" > "$seen"
+  fi
+  # WINDOW PLACEMENT IS UNCONTROLLED, unlike gpu-soak.sh which takes --screen. FurMark
+  # opens wherever the window manager puts it, on whatever monitor, possibly under a dock
+  # or panel. Observed 2026-08-04: it lands on a different monitor than GravityMark, with
+  # a dock overlapping it. That is tolerable ONLY because this probe decides nothing — it
+  # quantifies the power-capped regime for information. Its MHz/W are comparable to other
+  # FurMark probes taken the same way, and to nothing else. Never against a GravityMark
+  # number, and never as a benchmark score.
   awk '$2+0>300 {n++; c+=$1; w+=$2; if($3+0>t)t=$3+0}
        END{ if(n) printf "  FurMark (power-capped): %.0f MHz  %.0f W  peak %.0f C\n", c/n, w/n, t
             else print "  FurMark: no loaded samples" }' "$f" | tee -a "${STATE%.tsv}.log"
+  say "    (informational only — window placement is not controlled, so this is"
+  say "     comparable to other FurMark probes and to nothing else)"
 }
 
 run_rung() {   # $1 = label
@@ -745,6 +795,7 @@ if [ -n "$WIN" ]; then
     if "$FLATTEN" --mv "$wmv" --mhz "$wmhz" >/dev/null 2>&1; then
       PASSES=$CONFIRM
       if run_rung "${wmv}mV/${wmhz}-confirm"; then
+        CONFIRMED=1
         say "  ✓ CONFIRMED over $CONFIRM passes — this is the setting to keep."
         say ""
         say "  probing the power-capped regime at this setting (compare with stock above):"
@@ -768,8 +819,19 @@ say "SWEEP COMPLETE — $(date +%H:%M:%S)"
 say ""
 "$HERE/gpu-ladder-report.sh" --state "$STATE" 2>&1 | tee -a "${STATE%.tsv}.log"
 say ""
-say "The confirmed pair above is the one to keep — the back-off rung has already been"
-say "applied and soaked, so no further adjustment is needed."
+# Do not claim a confirmation that did not happen. The 2026-08-04 run printed "already
+# been applied and soaked" over a confirm rung recorded INTERRUPTED 25 s in — a completion
+# claim contradicted by the very state file printed two lines above it.
+if [ "${CONFIRMED:-0}" = 1 ]; then
+  say "The pair above passed the long soak. That is the setting to keep — no further"
+  say "adjustment is needed."
+elif [ -n "${WIN:-}" ]; then
+  say "⚠️ The winner above was chosen from SCREENING runs only — the long confirmation"
+  say "   soak did not complete. Screening is 4 passes; instability at the edge is"
+  say "   probabilistic. Confirm before trusting it daily:"
+  say "     sudo $FLATTEN --mv ${wmv:-?} --mhz ${wmhz:-?}"
+  say "     sudo $SOAK --screen $SCREEN --passes $CONFIRM"
+fi
 say ""
 printf 'SWEEP\tCOMPLETE\t\t%s\n' "$(date -Is)" >> "$STATE"; sync
 say "Curve reset to stock. Nothing persists across a reboot."

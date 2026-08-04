@@ -63,7 +63,12 @@ while IFS='|' read -r rung ts; do
   # which is exactly what it did here: 1000mV/2800 and 1000mV/2900 reported identical
   # power, clock and score because both resolved to the first run's data.
   d=$(awk -F'\t' -v l="$rung" '$1==l && $2=="FINISHED" && $5!=""{print $5}' "$STATE" | tail -1)
-  fin=$(awk -F'\t' -v r="$rung" '$1==r && $2=="FINISHED"{print 1}' "$STATE" | tail -1)
+  # Only a rung that PASSED may fall back to timestamp matching. Requiring merely
+  # FINISHED was not enough: 950mV/3100 FAILED — it hard-locked the machine — had no
+  # recorded directory, and the fallback handed it its neighbour's data, so the report
+  # printed the rung that killed the box as "WINS BOTH  score +7.2%". A rung with no
+  # data of its own must show no data, never the nearest run's.
+  fin=$(awk -F'\t' -v r="$rung" '$1==r && $2=="FINISHED" && $3=="PASS"{print 1}' "$STATE" | tail -1)
   if [ -z "$d" ] && [ -n "$fin" ]; then
     d=$(for x in "$home"/bench/soak-*/; do
           [ -f "$x/sensors.txt" ] || continue
@@ -114,7 +119,14 @@ BEGIN { if (rw+0 <= 0 || rf+0 <= 0) {
           print "No stock baseline in this ladder — nothing to compare against."
           print "The verdict is deliberately withheld rather than computed against a"
           print "reference from different hardware."; exit } }
+# Only PASSING rungs are ranked. A FAIL or INTERRUPTED rung has no usable measurement,
+# and feeding it to the comparison produced nonsense with a confident face: the
+# 2026-08-04 report scored an interrupted confirm at "-100.0%" and tagged it STRETCHED,
+# and listed a hard-locking FAIL rung as WINS BOTH. Verdicts rank results; a rung that
+# did not produce one is listed below, plainly, as not having produced one.
 $1=="stock" || $3=="-" || $2=="RUNNING" { next }
+$2!="PASS" { nb++; bad[nb]=$1 "  [" $2 "]"; next }
+$5+0 <= 0 { nb++; bad[nb]=$1 "  [no score recorded]"; next }
 { n++; rung[n]=$1; verd[n]=$2; w[n]=$3+0; f[n]=$4+0; sc[n]=$5+0
   # split "1000mV/3100" into its anchor and its TARGET clock. The target is what was
   # asked for; f[] is what the card reported delivering. Keeping them apart is the whole
@@ -172,6 +184,11 @@ END {
       if (gain < 1 && gain > -1)
         printf "  ! %s over %s is only %+.1f%% score — returns are flattening here.\n", rung[i], rung[i-1], gain
     }
+  }
+  if (nb) {
+    print ""
+    print "  Not ranked (no usable measurement):"
+    for (i=1;i<=nb;i++) printf "    %s\n", bad[i]
   }
   print ""
   print "  Reminder: prefer a rung with a PASSING rung ABOVE it at the same anchor — that"
