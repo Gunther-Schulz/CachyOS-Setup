@@ -248,15 +248,42 @@
   chasing the true optimum means re-laddering at 950 and 900 mV for perhaps another 5 %
   power.
 
-  **Tooling, in the order it is used:**
+  **Tooling — [`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh) is the one to run; the rest are its parts or its ancestors:**
+
   | Tool | Job |
   |---|---|
-  | [`gpu-flatten.sh`](../../tools/gpu-flatten.sh) | apply one (anchor, clock) pair |
-  | [`gpu-soak.sh`](../../tools/gpu-soak.sh) | validate one setting at gaming clocks |
-  | [`gpu-clock-ladder.sh`](../../tools/gpu-clock-ladder.sh) | **the current run** — baseline, then clock ladder at a fixed anchor |
-  | [`gpu-ladder-report.sh`](../../tools/gpu-ladder-report.sh) | one comparison table, safe mid-run |
-  | [`gpu-uv-ladder.sh`](../../tools/gpu-uv-ladder.sh) | superseded — global-offset path |
-  | [`gpu-flatten-ladder.sh`](../../tools/gpu-flatten-ladder.sh) | superseded — walks the anchor with clock frozen at stock |
+  | ⭐ [`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh) | **THE RUN.** Both axes, baseline first, stops at the plateau, confirms the backed-off winner, probes FurMark at both ends. ~2.8 h unattended. |
+  | [`gpu-ladder-report.sh`](../../tools/gpu-ladder-report.sh) | comparison table + computed verdict; **needs no root**, safe mid-run |
+  | [`gpu-flatten.sh`](../../tools/gpu-flatten.sh) | applies one (anchor, clock) pair — used by the explorer |
+  | [`gpu-soak.sh`](../../tools/gpu-soak.sh) | validates one setting at gaming clocks — used by the explorer |
+  | [`gpu-clock-ladder.sh`](../../tools/gpu-clock-ladder.sh) | superseded — one axis (clock) at a fixed anchor |
+  | [`gpu-flatten-ladder.sh`](../../tools/gpu-flatten-ladder.sh) | superseded — one axis (anchor) with clock frozen at stock |
+  | [`gpu-uv-ladder.sh`](../../tools/gpu-uv-ladder.sh) | superseded — global-offset path, limited by the top of the curve |
+
+  ```fish
+  sudo ./tools/gpu-uv-explore.sh --screen 1     # start / Ctrl-C is a safe pause
+  sudo ./tools/gpu-uv-explore.sh --resume       # continue, re-running nothing decided
+  ./tools/gpu-ladder-report.sh --state ~/bench/explore-state.tsv   # progress, no root
+  ```
+
+  🐛 **Known bug, fix pending:** `gpu-uv-explore.sh --status` demands root although it only
+  reads files — the root check sits above the status branch. Use the report command above
+  instead, which needs no root. **Not fixed while a run is in progress:** bash reads a
+  script incrementally as it executes, so editing a live one can corrupt it mid-run.
+
+  **Granularity is a resolution choice, refinable after the fact.** The default grid is
+  50 mV × 100 MHz, so a true optimum at e.g. 970 mV / 2 950 MHz would never be tested.
+  Coarse first is the right order — refine around the winner once it is located:
+  ```fish
+  sudo ./tools/gpu-uv-explore.sh --screen 1 --anchors "990 975 960" --clocks "2900 2950 3000"
+  ```
+
+  ⚠️ **The result is deliberately NOT the optimum**, on three counts, each intentional:
+  the grid is coarse; it stops at the plateau rather than the maximum (which is *how* it
+  avoids crashing to find the edge); and it then backs off one rung for margin. What it
+  guarantees, if such a setting exists, is **coasting workloads no worse than stock** and
+  **capped workloads better** — near-optimal with margin, which is the right target for a
+  machine in daily use.
 
   ## Phase 2 — TUNE WITHOUT PERSISTING (operator decision 2026-08-04)
 
