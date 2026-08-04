@@ -18,6 +18,10 @@
 # Usage:
 #   sudo ./tools/gpu-thermal.sh stock                  # GPU alone, before undervolt
 #   sudo ./tools/gpu-thermal.sh combined -c            # GPU **and** CPU together
+#   sudo ./tools/gpu-thermal.sh gaming -l none         # OBSERVE: you start the load
+#
+# -l none samples without launching anything — for GUI benchmarks (Superposition,
+# FurMark) or a real game. Start the script, then start the benchmark.
 #   sudo ./tools/gpu-thermal.sh uv-450w                # after an undervolt
 #   sudo ./tools/gpu-thermal.sh stock -t 900           # longer load (default 600s)
 #   sudo ./tools/gpu-thermal.sh stock -l "furmark ..." # different load command
@@ -73,12 +77,19 @@ home=$(getent passwd "${SUDO_USER:-root}" | cut -d: -f6)
                        echo "  build it: see docs/cachyos/todo.md (GPU hotspot item)" >&2; exit 1; }
 command -v nvidia-smi >/dev/null || { echo "missing: nvidia-smi" >&2; exit 1; }
 
-if [ -z "$LOAD" ]; then
+# "-l none" = OBSERVE mode: sample for SECS while the operator drives the load by hand.
+# Needed for GUI benchmarks (Superposition, FurMark, an actual game) that are awkward or
+# impossible to launch headlessly — the measurement does not care who started the load.
+OBSERVE=0
+[ "$LOAD" = none ] && { OBSERVE=1; LOAD=""; }
+
+if [ "$OBSERVE" = 0 ] && [ -z "$LOAD" ]; then
   for c in gpu_burn gpu-burn; do command -v $c >/dev/null && { LOAD="$c $SECS"; break; }; done
+  [ -n "$LOAD" ] || { echo "no GPU load tool found." >&2
+                      echo "  install: yay -S gpu-burn-git      (then re-run)" >&2
+                      echo "  or pass one: -l 'furmark --...'" >&2
+                      echo "  or observe a hand-started load: -l none" >&2; exit 1; }
 fi
-[ -n "$LOAD" ] || { echo "no GPU load tool found." >&2
-                    echo "  install: yay -S gpu-burn-git      (then re-run)" >&2
-                    echo "  or pass one: -l 'furmark --...'" >&2; exit 1; }
 
 OUT="${home:-/root}/bench/gpu-$LABEL"
 mkdir -p "$OUT" || { echo "cannot create $OUT" >&2; exit 1; }
@@ -176,8 +187,15 @@ echo; echo "--- idle baseline (${IDLE}s) ---"
 sampler "$OUT/idle.txt" & p=$!; sleep "$IDLE"; kill $p 2>/dev/null
 report idle "$OUT/idle.txt"
 
-echo; echo "--- LOAD: $LOAD ---"
-[ "$CPULOAD" = 1 ] && echo "    + CPU all-core at the same time (combined worst case)"
+if [ "$OBSERVE" = 1 ]; then
+  echo; echo "════════════════════════════════════════════════════════"
+  echo "  OBSERVE MODE — start your benchmark NOW."
+  printf '  Sampling for %ss. Ctrl-C aborts.\n' "$SECS"
+  echo "════════════════════════════════════════════════════════"
+else
+  echo; echo "--- LOAD: $LOAD ---"
+  [ "$CPULOAD" = 1 ] && echo "    + CPU all-core at the same time (combined worst case)"
+fi
 echo "    (first 2-3 min are not steady state; watch the delta settle)"
 sampler "$OUT/load.txt" & p=$!
 cpid=""
@@ -187,7 +205,11 @@ if [ "$CPULOAD" = 1 ]; then
   stress-ng --matrix 0 -t $(( SECS + 30 )) >/dev/null 2>&1 &
   cpid=$!
 fi
-sh -c "$LOAD" >"$OUT/load-tool.log" 2>&1 &
+if [ "$OBSERVE" = 1 ]; then
+  sh -c "sleep $SECS" &
+else
+  sh -c "$LOAD" >"$OUT/load-tool.log" 2>&1 &
+fi
 lp=$!
 while kill -0 $lp 2>/dev/null; do
   sleep 30
