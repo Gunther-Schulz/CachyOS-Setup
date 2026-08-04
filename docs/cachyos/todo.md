@@ -236,6 +236,21 @@
      `sudo ./tools/gpu-flatten.sh --mv <mv> --mhz <mhz>; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
   3. **Persistence** — save as an nvcurve profile, then a systemd unit. Nothing survives a reboot today.
   4. **Validate in a real game** — one fixed GravityMark scene is one shader mix, not a workload.
+     **Marvel Rivals, run uncapped/high-fps** — not maxed-RT. The coasting high-boost
+     regime is where undervolt instability lives; pinning 575 W holds the clock ~400 MHz
+     *below* the failure point, which is why FurMark has never crashed this card.
+     ⚠️ **Before blaming any crash on the flatten, check the two known non-GPU-setting
+     failure modes** — `VKD3D_CONFIG=descriptor_heap` (five Xid 109 hangs on Aug 03, same
+     signature as ours, root-caused and removed) and the open Blackwell 3–5 s presentation
+     freeze (a stutter, **no Xid**). Full crash record:
+     [nvidia/5090-thermals.md](nvidia/5090-thermals.md#the-complete-gpu-crash-record--and-what-it-says-about-which-load-to-test-with).
+     Log the regime while playing, which also closes the open premise below:
+     ```fish
+     while true; nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits >> ~/bench/game-session.csv; sleep 5; end
+     # afterwards:
+     journalctl -b | grep -i xid
+     env LC_ALL=C awk -F, '$2+0>100{n++; p+=$2; c+=$1; if($2+0>545)cap++} END{printf "%d samples under load  mean %.0f W  mean %.0f MHz  at the cap %.0f%%\n", n, p/n, c/n, cap*100/n}' ~/bench/game-session.csv
+     ```
 
   ---
 

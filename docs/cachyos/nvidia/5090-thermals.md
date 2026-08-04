@@ -849,6 +849,42 @@ evidence, and at the top of the curve it actively lies.
 Method note worth keeping: **utilization + loaded-sample count is the cheap test for whether
 a soak was disturbed.** An interrupted run shows a low-utilization tail; this one does not.
 
+### The complete GPU crash record — and what it says about which load to test with
+
+Every Xid this machine has ever logged, whole journal, all four retained boots
+(`journalctl --no-pager | grep -i "xid"`, read 2026-08-04 23:30 — the instrument matters:
+stacked `-b` flags do **not** union boots, the last one wins, and that form returned an
+empty result that reads exactly like "no crashes"):
+
+| when | Xid | process | cause |
+|---|---|---|---|
+| Aug 03 00:01–00:05 (×5) | 109 CTX SWITCH TIMEOUT + 31 MMU fault | `GameThread` — Marvel Rivals | **not the GPU setting** — `VKD3D_CONFIG=descriptor_heap`, root-caused and removed the same day ([marvel-rivals.md](../gaming/games/marvel-rivals.md)); card was at stock, no `nvcurve` call exists before Aug 04 10:58 |
+| Aug 04 13:57 | 109 CTX SWITCH TIMEOUT | `GravityMark.x64` | undervolt ladder |
+| Aug 04 17:37 | *(none — hard lock, died before logging)* | whole machine | `950mV/3100` |
+| Aug 04 18:49 | 38, then 109, then 154 PF FLR | `gnome-shell` | mis-applied 900 mV flatten |
+
+**FurMark has never crashed this card. Not once — and that is mechanism, not luck.**
+FurMark pins 575 W, and the power cap *holds the clock down*: 2 307–2 500 MHz reported
+(really ~12 % lower still, see stretching above). GravityMark coasts at ~362 W and boosts
+to **2 802 MHz**. Undervolt instability is a high-clock-on-low-voltage failure, so the
+load that pins the power limit is testing the card ~500 MHz *below* where it breaks.
+**A power virus is a weak stability test for an undervolt** — the opposite of the natural
+reading, and the same shape as the `gpu_burn` correction recorded above. Validate in the
+coasting, high-boost regime: an uncapped framerate, not a stress test.
+
+**Marvel Rivals is usable as the validation game, but read row 1 before blaming a crash on
+the flatten.** Its five hangs carry the *same* Xid 109 signature our undervolt failures do,
+and they were a launch-flag bug — so the row above is what stops a repeat from being
+misattributed. Two known non-GPU-setting failure modes to keep straight while validating:
+`descriptor_heap` (never re-add it) and the open Blackwell 3–5 s presentation freeze, which
+is a stutter with **no Xid** and therefore distinguishable in the journal.
+
+Method note, general: **a game only validates an undervolt if its own crash history has
+been read and accounted for first** — and the whole-journal read is the load-bearing part.
+Stacked boot flags (`-b -2 -b -1 -b 0`) do **not** union boots; the last one wins, silently,
+and that form returns an empty result indistinguishable from a clean history. Use
+`journalctl --no-pager | grep -i "xid"` with no `-b` at all.
+
 ### Apply it
 
 ```sh

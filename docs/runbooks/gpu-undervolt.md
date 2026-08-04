@@ -28,6 +28,21 @@ which is how a `+400` attempt hung this machine (top point pushed to 3 580 MHz @
 
 A setting is a **pair**: `(anchor mV, target MHz)`.
 
+### The MHz is a ceiling, not a demand — and the mV is the real setting
+
+The frequency is **not** being locked on. Nothing forces the card to run at it. The curve
+still says "at voltage V you may run at most F", and the card still picks its own operating
+point every millisecond based on power, temperature and load — it idles, it drops under a
+power cap, it does all of that unchanged. What the flatten does is make the answer to
+"may I run faster?" stop improving above the anchor voltage. The card then has no reason to
+raise voltage past it, so it doesn't.
+
+So of the pair, **the mV is the setting you are choosing** — the voltage you refuse to
+exceed. The MHz only says *what you demand in exchange*: how much clock the card must
+deliver at that voltage for the deal to be worth taking. Ask too much and it does not
+refuse — it stretches (below), or it hangs. Both numbers move together: at a given anchor,
+the highest MHz that still delivers is the card's real limit at that voltage.
+
 ---
 
 ## Prerequisites
@@ -160,8 +175,35 @@ Before trusting it daily:
 1. **12-pass soak** — `sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
    (stability only — 12 passes of one scene is not evidence about performance)
 2. **~1 h of a real game.** One fixed benchmark scene is one shader mix, not a workload.
-   Check `journalctl -b | grep -i xid` afterwards.
+   Check `journalctl -b | grep -i xid` afterwards — **and pick the title by the two rules
+   below.**
 3. Only then make it persistent (nvcurve profile → systemd unit).
+
+### Choosing the validation load — two rules, both learned by getting them wrong
+
+⚠️ **A power virus is a weak stability test for an undervolt.** FurMark, `gpu_burn` and
+anything else that pins the power limit holds the clock *down* — on the 5090, ~2 400 MHz
+against ~2 800 MHz for a coasting load. Undervolt instability is a high-clock-on-low-voltage
+failure, so the heaviest-looking load tests the card hundreds of MHz below where it breaks.
+Validate in the **coasting, high-boost** regime: an uncapped framerate, not a stress test.
+(Confirmed twice on this card: `gpu_burn` ran clean at an offset that froze the machine in
+GravityMark, and FurMark has never produced a single Xid across the whole tuning campaign.)
+
+⚠️ **Read the machine's crash history BEFORE the run, not after it crashes.** A GPU hang
+presents as Xid 109 whatever caused it — a bad Proton flag, a driver bug and a too-low
+voltage are the same line in the journal. Unless the title's existing faults are known and
+accounted for, the first crash gets charged to the setting and the ladder backs off a rung
+for no reason. A title with prior hangs is still usable *if* each one is root-caused; what
+disqualifies it is an **unexplained** hang.
+
+```fish
+journalctl --no-pager | grep -i xid
+```
+
+**Read that command carefully — it has no `-b`.** Stacked boot flags (`-b -2 -b -1 -b 0`)
+do *not* union boots: the last one wins, silently, and the result reads exactly like a
+clean history. That mistake here hid five stock crashes and produced a confident wrong
+recommendation. Search the whole journal, then read the `name=` field on every hit.
 
 ---
 
