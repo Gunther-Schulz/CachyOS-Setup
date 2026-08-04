@@ -167,7 +167,10 @@ run_set multicore matrix --matrix 0
 run_set single-thread cpu --cpu 1 --cpu-method fft
 
 { echo; echo "loadavg-post: $(cut -d' ' -f1-3 /proc/loadavg)"; } >> "$cond"
-chown -R "${SUDO_USER:-root}" "$OUT" 2>/dev/null
+# Chown ~/bench itself, not just this run's subdirectory — running under sudo
+# creates ~/bench as root, which then blocks every UNPRIVILEGED tool that writes
+# there (thermal-sweep.sh fails on exactly this).
+chown -R "${SUDO_USER:-root}" "${home:-/root}/bench" 2>/dev/null
 
 echo "=== summary ($LABEL) ==="
 cat "$OUT/summary.txt"
