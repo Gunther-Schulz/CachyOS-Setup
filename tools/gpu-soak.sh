@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# gpu-soak.sh — unattended GPU stability soak at GAMING clocks, with automatic
+# hang detection. Replaces "play a game for an hour and hope you notice".
+#
+# WHY THIS EXISTS. The +400 MHz offset failure on 2026-08-04 taught three things:
+#   1. It appeared ~2m40s into a run, not at startup — instability at the wall is
+#      PROBABILISTIC. Short tests prove nothing. Duration is the test.
+#   2. There was NO visual artifact. The failure was a hang (Xid 109, CTX SWITCH
+#      TIMEOUT). So watching the screen was never going to catch it — which means
+#      the test does not need a human, only a long enough load and a log reader.
+#   3. gpu_burn passed it clean. It runs power-capped at ~2125 MHz while games run
+#      ~3040 MHz, so it validates a V/F point that is never used. Only a load at
+#      gaming clocks tests the regime that matters.
+#
+# GravityMark RT is the right load precisely because it is NOT power-hungry:
+# measured 3.04 GHz at 386 W of a 575 W limit. High clock, low power — the card sits
+# at its VOLTAGE ceiling, which is exactly where a curve offset destabilises it.
+# A power-virus (gpu_burn, FurMark) pins 575 W and clocks DOWN, hiding the fault.
+#
+# Detection is fully automatic, two independent channels:
+#   * kernel journal  -> NVRM Xid lines (the authoritative signal)
+#   * GravityMark log -> "device lost" / VK errors (the application's own view)
+#
+# ⚠️ RUN THE STOCK CONTROL FIRST. A hang under an offset only implicates the offset if
+# the machine is known stable WITHOUT it over the same duration. This machine has prior
+# history of Xid 109 hangs (Marvel Rivals / descriptor_heap, docs/cachyos/gaming/games/
+# marvel-rivals.md) — that cause was identified and fixed, but it means "Xid 109 appeared"
+# is not by itself proof that the offset caused it. Establish the baseline, then test.
+#
+#   1. ./tools/gpu-soak.sh                       # CONTROL — stock, must pass
+#   2. sudo ./tools/gpu-soak.sh --offset 250     # then the candidate
+#
+# Usage (no root needed unless --offset is given):
+#   ./tools/gpu-soak.sh                          # 20 passes ~55 min at current settings
+#   ./tools/gpu-soak.sh --passes 40              # ~110 min
+#   sudo ./tools/gpu-soak.sh --offset 250        # apply offset, soak, restore on exit
+#   ./tools/gpu-soak.sh --asteroids 500000       # heavier scene
+#
+# Each GravityMark pass is ~167 s, so passes x 3 min is roughly the wall-clock time.
+
+set -uo pipefail
+export LC_ALL=C          # awk emits "68.6", bash printf expects "68,6" on this machine
+
+PASSES=20
+ASTEROIDS=200000
+WIDTH=2560
+HEIGHT=1440
+OFFSET=""
+
+usage() { sed -n '2,32p' "$0"; exit "${1:-0}"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --passes) PASSES=$2; shift 2 ;;
+    --asteroids) ASTEROIDS=$2; shift 2 ;;
+    --width) WIDTH=$2; shift 2 ;;
+    --height) HEIGHT=$2; shift 2 ;;
+    --offset) OFFSET=$2; shift 2 ;;
+    -h|--help) usage 0 ;;
+    *) echo "unknown option: $1" >&2; usage 1 ;;
+  esac
+done
+
+home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+GM="$home/Downloads/GravityMark_1.89_linux/bin/GravityMark.x64"
+[ -x "$GM" ] || { echo "GravityMark not found at $GM" >&2
+                  echo "  adjust the path in this script, or reinstall from gravitymark.tellusim.com" >&2; exit 1; }
+NVCURVE="$home/.local/bin/nvcurve"
+
+if [ -n "$OFFSET" ]; then
+  [ "$(id -u)" -eq 0 ] || { echo "--offset needs root; re-run with sudo" >&2; exit 1; }
+  [ -x "$NVCURVE" ] || { echo "nvcurve not found at $NVCURVE" >&2; exit 1; }
+fi
+
+OUT="${home:-/root}/bench/soak-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$OUT" || { echo "cannot create $OUT" >&2; exit 1; }
+LOG="$OUT/soak.log"
+say() { echo "$*" | tee -a "$LOG"; sync; }   # sync: a hang must not lose the record
+
+cleanup() {
+  [ -n "${SPID:-}" ] && kill "$SPID" 2>/dev/null
+  if [ -n "$OFFSET" ] && [ -x "$NVCURVE" ]; then
+    echo; echo "restoring stock V/F offsets ..."
+    "$NVCURVE" write --reset >/dev/null 2>&1
+  fi
+}
+trap cleanup EXIT INT TERM
+
+# --- sensors ------------------------------------------------------------------------
+sampler() {
+  while :; do
+    printf '%s %s\n' "$(date +%s)" \
+      "$(nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu,fan.speed,utilization.gpu \
+         --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' | tr ',' ' ')"
+    sleep 3
+  done > "$1"
+}
+cmax()  { awk -v c="$1" '$c!="n/a"{v=$c+0; if(!s||v>m){m=v;s=1}} END{if(s) printf "%.0f", m; else print "n/a"}' "$2"; }
+cmean() { awk -v c="$1" '$c!="n/a"{s+=$c;n++} END{if(n) printf "%.0f", s/n; else print "n/a"}' "$2"; }
+
+START_MARK=$(date '+%Y-%m-%d %H:%M:%S')
+
+say "=== GPU stability soak — gaming clocks, unattended ==="
+say "passes:    $PASSES  (~$(( PASSES * 167 / 60 )) min)"
+say "scene:     ${WIDTH}x${HEIGHT}, ${ASTEROIDS} asteroids, Vulkan RT"
+say "offset:    ${OFFSET:-<current, unchanged>}"
+say "output:    $OUT"
+say ""
+say "Detects HANGS (Xid / device lost), which is how an unstable undervolt actually"
+say "fails — the 2026-08-04 +400 failure produced no visual artifact at all. Runs at"
+say "~3.0 GHz and ~390 W: high clock, low power, the regime gpu_burn cannot reach."
+say ""
+
+if [ -n "$OFFSET" ]; then
+  "$NVCURVE" write --global --delta "$OFFSET" >"$OUT/offset.log" 2>&1 \
+    && say "applied V/F offset +${OFFSET} MHz" \
+    || { say "FAILED to apply offset — aborting"; exit 1; }
+  say ""
+fi
+
+sampler "$OUT/sensors.txt" & SPID=$!
+
+say "starting $PASSES passes at $(date +%H:%M:%S) — leave the machine alone ..."
+say ""
+
+# -count N runs N benchmark passes back to back; -close 1 exits when done.
+# -times logs per-frame timings, so a stutter/hitch is recoverable after the fact.
+"$GM" -vk -raytracing 1 -temporal 1 -fullscreen 1 -screen 0 \
+      -benchmark 1 -count "$PASSES" -close 1 \
+      -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT" \
+      -times "$OUT/frametimes.txt" \
+      >"$OUT/gravitymark.log" 2>&1
+GM_RC=$?
+
+kill "$SPID" 2>/dev/null
+
+# --- verdict: two independent detectors ---------------------------------------------
+say ""
+say "═══════════════════════════════════════════════"
+XID=$(journalctl -k --since "$START_MARK" 2>/dev/null | grep -i 'xid' | tee "$OUT/xid.log" | wc -l)
+# `grep -c` prints 0 AND exits 1 on no match, so a `|| echo 0` fallback would append a
+# SECOND zero and break the numeric test below. grep -c always prints a number: use it.
+DEVLOST=$(grep -ci 'device lost\|VK::error' "$OUT/gravitymark.log" 2>/dev/null)
+DEVLOST=${DEVLOST:-0}
+SCORES=$(grep -oE 'Score: [0-9]+' "$OUT/gravitymark.log" 2>/dev/null | grep -oE '[0-9]+' | tr '\n' ' ')
+NRUNS=$(echo "$SCORES" | wc -w)
+
+say "passes completed:   $NRUNS of $PASSES"
+say "GravityMark exit:   $GM_RC"
+say "Xid entries:        $XID"
+say "VK device-lost:     $DEVLOST"
+say ""
+say "sensors — peak clock $(cmax 2 "$OUT/sensors.txt") MHz   mean $(cmean 2 "$OUT/sensors.txt") MHz"
+say "          peak power $(cmax 3 "$OUT/sensors.txt") W     mean $(cmean 3 "$OUT/sensors.txt") W"
+say "          peak temp  $(cmax 4 "$OUT/sensors.txt") C     peak fan $(cmax 5 "$OUT/sensors.txt") %"
+say ""
+if [ -n "$SCORES" ]; then
+  say "scores: $SCORES"
+  echo "$SCORES" | tr ' ' '\n' | grep -E '^[0-9]+$' | awk '
+    {s+=$1; n++; if(!mn||$1<mn)mn=$1; if($1>mx)mx=$1}
+    END{ if(n) printf "  mean %.0f   min %d   max %d   spread %.1f%%\n", s/n, mn, mx, (mx-mn)*100/(s/n) }' | tee -a "$LOG"
+  say "  (spread is your run-to-run variance — an offset gain smaller than this is noise)"
+fi
+say ""
+
+if [ "$XID" -gt 0 ] || [ "$DEVLOST" -gt 0 ] || [ "$NRUNS" -lt "$PASSES" ]; then
+  say "❌ FAILED — unstable at this setting."
+  if [ -z "$OFFSET" ]; then
+    say "   ⚠️ This was a STOCK run. The fault is NOT an undervolt — the machine is"
+    say "      unstable at factory settings, and that is a different investigation."
+    say "      See docs/cachyos/issues/known-issues.md and the parked freeze item."
+  else
+    say "   Attribute to the offset ONLY if a stock control soak of the same length"
+    say "   passed. Without that control this is a hang, not a verdict on +$OFFSET."
+  fi
+  [ "$XID" -gt 0 ] && { say "   Xid detail:"; sed 's/^/     /' "$OUT/xid.log" | tail -5 | tee -a "$LOG"; }
+  [ "$DEVLOST" -gt 0 ] && say "   GravityMark reported device-lost / VK errors (see gravitymark.log)"
+  [ "$NRUNS" -lt "$PASSES" ] && say "   only $NRUNS of $PASSES passes completed — it died mid-soak"
+  say ""
+  say "Back off one step and re-soak. Recover now with:"
+  say "   sudo $NVCURVE write --reset      (or reboot — nothing persists)"
+  exit 1
+fi
+
+say "✅ PASSED — $PASSES passes, no Xid, no device-lost."
+say ""
+say "⚠️ This proves the HANG path only. It cannot see visual artifacts, and the scene"
+say "   is fixed — a real game varies shaders, resolution and load in ways this does"
+say "   not. It is a much better screen than a 3-minute benchmark, not a substitute"
+say "   for eventually playing something."
+say ""
+say "Live Xid watching during any future session:  ./tools/gpu-hang-watch.sh"
+say "Full logs: $OUT"
