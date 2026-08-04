@@ -255,13 +255,44 @@ the curve returns ~90 MHz per 10 mV, above it that collapses to 14.
 points correctly and is the right basis for *choosing* a target; the actual saving must
 be measured with `gpu-thermal.sh`, not taken from this table.
 
-**What this means for where an undervolt bites.** Under `gpu_burn` the card sat at
-**2 085 MHz** — far below the curve's top — because the 575 W power cap was already
-binding. So a curve edit capping at, say, 2 800 MHz would barely change the power-virus
-numbers. **It bites in gaming and light-to-medium loads**, where the card is free to
-climb into the 2 900–3 180 MHz region and pay that 110 % power premium for the last
-23 % of clock. That is also where the fans surge — which makes this the GPU-side twin
-of the CPU finding that partial load, not full load, is the hot case.
+### An undervolt is an overclock at fixed voltage — which is why FPS can RISE
+
+The name misleads. The edit is not "less voltage at the same clock"; there is no
+voltage knob. It is **more clock at the same voltage** — raise the frequency at a
+chosen point, then flatten everything above it. The card then reaches your target clock
+at a *lower* point on the curve than it used to, so the voltage it applies for that
+clock falls out as a consequence.
+
+Two distinct effects, and both are real:
+
+- **Not power-limited** (light and medium loads, high frame rates): the card was going
+  to run 2 800 MHz anyway, at ~1 020 mV. After the edit it runs 2 800 MHz at ~950 mV.
+  Same FPS, **~13 % less power, cooler and quieter.**
+- **Power-limited** (heavy load — this card sat at **2 085 MHz** under `gpu_burn`
+  purely because the 575 W cap bound first): more clock per volt means more clock
+  inside the same budget. The equilibrium moves up. **FPS actually increases**, and
+  power is unchanged because the cap still binds — the win shows up as performance
+  rather than as temperature.
+
+⚠️ **Correction to an earlier version of this section**, which said a curve edit "would
+barely change the power-virus numbers". That describes only the *flattening* half — a
+cap alone changes nothing below itself. The half that matters is **raising** frequency
+at the voltage points the card actually uses, and under a power limit that is precisely
+where the gain comes from.
+
+**The catch, stated plainly: this is an overclock and carries an overclock's risk.**
+Asking for 2 800 MHz at 950 mV means running the silicon past the point NVIDIA
+validated for that voltage. It works because factory curves are conservative enough to
+cover the worst chip they shipped — but how much headroom *this* chip has is a silicon
+lottery, and pushing past it produces artifacts, driver resets or `Xid` errors. There is
+no free lunch; there is an unclaimed margin, of unknown size until measured.
+
+**One thing worth checking during phase 2:** under `gpu_burn` the measured **NVVDD was
+~1.00–1.075 V while the SM clock read 2 085 MHz**, yet the curve says 2 092 MHz needs
+only **910 mV** (point 73). If that gap is real rather than a sampling artefact of a
+fluctuating load, there is ~90–150 mV of slack at the operating point before any curve
+edit at all — which would make the undervolt unusually effective here. Measure it
+before believing it.
 
 ## Open: case fans are driven by CPU temperature only
 
