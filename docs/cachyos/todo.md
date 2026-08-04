@@ -154,6 +154,25 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
+- **Desktop — READY: GPU undervolt, READ-ONLY investigation phase first (operator decision 2026-08-04: "no setting any other voltage right now, prepare with non-destructive reading investigation").**
+
+  Tool: **[`ekojsalim/nvcurve`](https://github.com/ekojsalim/nvcurve)** — per-point V/F curve editing via undocumented NvAPI, tested on RTX 5090/Blackwell. Why this and not `nvidia-settings` offsets: mechanism, safety analysis and the retraction of "no V/F editor exists on Linux" are in [nvidia/5090-thermals.md](nvidia/5090-thermals.md).
+
+  **Phase 1 — look, don't change.** `uv` is already installed (`/usr/bin/uv`).
+  ```fish
+  uv tool install nvcurve
+  sudo nvcurve setup          # 4-step compatibility check; only continue if "Compatible"
+  nvcurve read --full         # dump all 128 V/F points — the actual curve
+  nvcurve read --json         # same, machine-readable, for a before/after diff
+  ```
+  ⚠️ **`nvcurve setup` is not purely read-only.** Its third check **writes +5 MHz** to the last GPU-domain point, reads it back to confirm the driver accepted it and that no other point moved, then **auto-restores the snapshot**. Operator accepted this (2026-08-04). `nvcurve read` *is* read-only — verified by inspecting `cmd_read` in `cli.py`, which contains no write calls. Every write command also takes `--dry-run`, and snapshots are saved automatically before each write.
+
+  **What phase 1 buys:** the real curve, on this card, on this driver. Every undervolt decision afterwards is a per-point edit against those numbers rather than a guess — and it settles the one gap the research could not: whether the undocumented NvAPI path works on **610.43.03** specifically (confirmed testing was on adjacent versions only).
+
+  **⚠️ Session is Wayland, and that matters.** `XDG_SESSION_TYPE=wayland`, GNOME, and **no `CoolBits` anywhere in `/etc/X11/`**. The classic `nvidia-settings` offset route traditionally needs X11 with CoolBits enabled, so it is questionable on this machine — the read-only query worked, but a *write* is untested and may simply fail. NVCurve goes through NVML/NvAPI and needs no X server at all, which is an independent reason to prefer it here.
+
+  **Phase 2 (not now):** pick a voltage point, raise its frequency to the target clock, flatten the points above it — the Afterburner undervolt workflow, which caps the card at that voltage while leaving lower points untouched so **idle behaviour is preserved**. Validate per [nvidia/5090-thermals.md](nvidia/5090-thermals.md) — GPU undervolt instability appears **under load, not at idle**, so it is deterministically testable: run the load, watch for artifacts and `journalctl -b | grep -i xid`.
+
 - **Desktop — READY: tie case fans to GPU temperature as well as CPU (operator wants to explore this, 2026-08-04).**
 
   **The gap, measured not assumed:** case fans are driven from CPU temperature only, so a GPU-only load — the common case in gaming — gives them no reason to ramp. With the GPU at **575 W and the CPU idle**, CPU Tctl rose from ~51 °C to **65–72 °C purely from case-air heat soak** before the fans responded. They did eventually reach 1 523 rpm, but only *after* the GPU's heat had reached the CPU: a lagging, indirect response to the wrong sensor.
