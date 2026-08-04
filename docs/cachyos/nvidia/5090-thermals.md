@@ -318,6 +318,46 @@ cap alone changes nothing below itself. The half that matters is **raising** fre
 at the voltage points the card actually uses, and under a power limit that is precisely
 where the gain comes from.
 
+### Independent corroboration — another 5090 owner, same diagnosis, same fix
+
+A forum report (MSI 5090 Ventus 3X OC + 9800X3D, Aug 2025) matches this investigation
+on three points and settles one of its open questions.
+
+**1. He saw the same curve deficit, and reached the same conclusion.** At 0.98–1.0 V his
+stock card produced only 2 300–2 400 MHz, which he describes as *"WAY under the AB
+voltage curve's expected frequencies for those voltages"* — the identical observation
+made here (2 665 MHz at 1.075 V against a curve value of 2 917). He attributed it to the
+575 W limit throttling the card. That is the clamping diagnosis, arrived at
+independently on different hardware.
+
+**2. It answers the "is +1000 MHz at 900 mV achievable?" question — yes.** His setting is
+**0.9 V @ 2 900 MHz, flattened above**, described as *"rock solid stable"*, running
+0.86–0.89 V at 2 500–2 800 MHz in practice. This repo flagged that magnitude as untested
+and possibly implausible; it is neither. The low-voltage curve points are tuned for idle
+efficiency, not silicon limits.
+
+**3. It resolves the performance-OR-quiet framing — a flatten gives BOTH, workload-dependent.**
+
+| His workload | Power state | What the flatten produced |
+|---|---|---|
+| 3DMark Steel Nomad | **at the 575 W cap** | **+7.2 % score at UNCHANGED power** (13 780 → 14 770) |
+| VR flight sims | below the cap | *"noticeably reducing temps and power consumption"* |
+
+**One setting, two behaviours.** Power-limited work converts the freed voltage into
+clock; unconstrained work converts it into lower power. The card decides, per workload.
+Earlier framing in this document treated these as a choice — they are not.
+
+⚠️ **It also calibrates our model, downward.** His numbers: 2 470 MHz @ 0.965 V →
+2 610 MHz @ 0.870 V, both at 575 W. A pure V²·f model predicts **3 039 MHz**; he got
+**2 610** — the model **over-predicts by 16 %**, because memory and static/leakage power
+are not in it. So the **−31 % power estimated for an 890 mV anchor here is optimistic**;
+expect nearer −20 %.
+
+⚠️ **And his stock regime is not ours.** His Steel Nomad ran at the cap; this card's
+GravityMark run sits at **370 W of 575** with 189 W spare. So the "more performance"
+face will show up here in genuinely heavy work (like `gpu_burn`, which does pin 575 W),
+and the "less power" face in the lighter loads already measured.
+
 ### Same operation as CPU Curve Optimizer, expressed in the mirror
 
 Calling the CPU work an "undervolt" and the GPU work an "overclock" is a naming
