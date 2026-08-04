@@ -64,7 +64,44 @@ NVCURVE=${NVCURVE:-$home/.local/bin/nvcurve}
 if [ "$RESET" = 1 ]; then "$NVCURVE" write --reset; exit $?; fi
 [ "$ANCHOR_MV" -gt 0 ] && [ "$TARGET_MHZ" -gt 0 ] || { echo "need --mv and --mhz" >&2; usage 1; }
 
+# RESET FIRST — THE PLAN MUST BE COMPUTED AGAINST THE STOCK CURVE.
+#
+# The plan is `delta = target - CURRENT frequency`, and nvcurve deltas are offsets from
+# STOCK. So reading an already-flattened curve gives current == target, every delta comes
+# out ZERO, and writing zeros RESETS THE CARD TO STOCK. Applying the same flatten twice
+# silently undoes it — the second call reports success and leaves the card unmodified.
+#
+# Measured 2026-08-04 in an A/B run that applied the flatten before each pass: the passes
+# following another flattened pass drew 362-363 W against 326-329 W for the real thing —
+# stock power, under a "setting" label, in three of six samples. Nothing errored. The
+# only reason it was caught is that the run happened to record per-pass power.
+#
+# Resetting first costs one nvcurve call and makes the operation idempotent: applying the
+# same flatten N times now leaves the same curve, which is what every caller assumed.
+if [ "$DRY" = 0 ]; then
+  "$NVCURVE" write --reset >/dev/null 2>&1
+fi
 CURVE=$("$NVCURVE" read --json 2>/dev/null) || { echo "could not read the curve" >&2; exit 1; }
+
+# --dry-run does NOT reset (a dry run must not change state), so it can be reading a
+# modified curve and would then print a plan against the wrong base. Detect the common
+# case — a flatten already applied leaves many top points sharing one frequency — and say
+# so rather than printing a confidently wrong table.
+if [ "$DRY" = 1 ]; then
+  DUP=$(echo "$CURVE" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+f=[p["freq_kHz"] for p in d["vf_curve"] if p.get("domain")=="gpu" and p["volt_uV"]>0]
+top=sorted(f)[-12:]
+print(1 if len(set(top))<=2 else 0)' 2>/dev/null)
+  if [ "${DUP:-0}" = 1 ]; then
+    echo "⚠️ The card does not look like it is at stock — the top of the curve is flat," >&2
+    echo "   which is what an applied flatten looks like. The plan below is computed" >&2
+    echo "   against the CURRENT curve, not stock, so its deltas are wrong." >&2
+    echo "   Reset first:  sudo $0 --reset" >&2
+    echo >&2
+  fi
+fi
 
 # Build the edit plan. Only GPU-domain points at or above the anchor voltage are touched;
 # memory points and everything below the anchor are left alone.

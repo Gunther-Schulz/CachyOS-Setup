@@ -194,6 +194,41 @@ pcase "ceiling above cap is reduced"     2700        2250 400 "2700 2800 2900 30
 # no delta knowledge yet (first anchor): ceiling is the only guide, cap inactive
 pcase "no proven delta -> ceiling"       3100        2002 0   "2700 2800 2900 3000 3100" 2700 3100
 
+
+# ── flatten idempotency ─────────────────────────────────────────────────────────────
+# gpu-flatten.sh computes `delta = target - CURRENT freq`, and nvcurve deltas are offsets
+# from STOCK. Applied to an already-flattened curve every delta is zero, and writing zeros
+# RESETS THE CARD. Applying the same flatten twice silently undid it, reporting success
+# both times. Caught 2026-08-04 only because an A/B run recorded per-pass power and three
+# of six "setting" passes drew stock wattage. The fix is to reset before reading, making
+# the operation idempotent — which is what every caller already assumed it was.
+echo
+echo "=== flatten idempotency ==="
+fplan() {   # $1 = target, then mv:freq pairs -> deltas
+  local t=$1; shift
+  local out="" spec mv f
+  for spec in "$@"; do IFS=: read -r mv f <<< "$spec"; out="$out $(( t - f ))"; done
+  echo "${out# }"
+}
+STOCK_PTS="1000:2752 1075:2917 1120:3000 1240:3180"
+FLAT_PTS="1000:3000 1075:3000 1120:3000 1240:3000"
+d1=$(fplan 3000 $STOCK_PTS)
+d2_buggy=$(fplan 3000 $FLAT_PTS)
+d2_fixed=$(fplan 3000 $STOCK_PTS)
+if [ "$d1" = "$d2_fixed" ]; then printf '  ✅ %-34s %s
+' "reset-first is idempotent" "$d2_fixed"; PASS=$((PASS+1))
+else printf '  ❌ %-34s %s != %s
+' "reset-first is idempotent" "$d1" "$d2_fixed"; FAIL=$((FAIL+1)); fi
+if [ "$d2_buggy" = "0 0 0 0" ]; then printf '  ✅ %-34s %s
+' "old path zeroed (the defect)" "$d2_buggy"; PASS=$((PASS+1))
+else printf '  ❌ %-34s expected all-zero, got %s
+' "old path zeroed (the defect)" "$d2_buggy"; FAIL=$((FAIL+1)); fi
+if grep -q 'NVCURVE" write --reset' "$HERE/gpu-flatten.sh" &&    awk '/RESET FIRST/{f=1} f&&/write --reset/{print;exit}' "$HERE/gpu-flatten.sh" | grep -q reset; then
+  printf '  ✅ %-34s
+' "gpu-flatten.sh resets before read"; PASS=$((PASS+1))
+else printf '  ❌ %-34s
+' "gpu-flatten.sh does NOT reset first"; FAIL=$((FAIL+1)); fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi
