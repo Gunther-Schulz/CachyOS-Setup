@@ -377,17 +377,26 @@
   stddev, pins every parameter, has no sampling variance, and emits CSV/JSON.
   ✅ `extra/llama-cpp` installed 2026-08-05 (`b10221-1.1`, provides `/usr/bin/llama-bench`).
 
-  ⚠️ **It silently ran on VULKAN, not CUDA — check the backend before trusting a number.**
-  `ggml 0.17.0` ships `libggml-cuda.so`, but the library fails to load because
-  **`libnccl.so.2` is missing**, and ggml falls back to Vulkan without an error. ollama
-  runs CUDA, so a Vulkan measurement would be a *different backend* than the workload it
-  claims to represent — the same proxy error this whole item exists to avoid. Fix and
-  verify:
+  ⚠️ **It silently ran on VULKAN, not CUDA.** `ggml 0.17.0` ships `libggml-cuda.so`, but
+  the library failed to load because **`libnccl.so.2` was missing**, and ggml fell back to
+  Vulkan without an error. ollama runs CUDA, so a Vulkan measurement would be a *different
+  backend* than the workload it claims to represent — the same proxy error this whole item
+  exists to avoid. ✅ Fixed 2026-08-05 with `nccl 2.30.7`; `CUDA0` now enumerates.
+  Diagnose any recurrence with `ldd /usr/lib/ggml/libggml-cuda.so | grep 'not found'` —
+  the failure is silent, so it is found by looking, never by an error.
+
+  ⚠️ **Always pass `-dev CUDA0`.** Both backends load, so the same physical GPU enumerates
+  **twice** — `CUDA0` and `Vulkan0` — and `--device` defaults to `auto`. Leaving it to auto
+  puts the backend choice outside our control in a measurement whose entire purpose is
+  controlled comparison. Pin it, and pin the layer count too:
+
   ```fish
-  sudo pacman -S nccl
-  llama-bench --list-devices     # must show CUDA0, not Vulkan0
+  llama-bench -m $m -dev CUDA0 -ngl 99 -p 512 -n 128 -r 5 -o json
   ```
-  Diagnose a silent fallback with `ldd /usr/lib/ggml/libggml-cuda.so | grep 'not found'`.
+
+  Confirm the header says `CUDA0` on every run — this is a per-run check, not a one-time
+  install check, since a `ggml` or CUDA upgrade can break the load again exactly as it was
+  broken on arrival.
 
   ⚠️ **Arch's build prints `asserts enabled, performance may be affected`.** Absolute
   throughput therefore does **not** represent real inference speed — these numbers are for
