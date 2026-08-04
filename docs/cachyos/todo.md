@@ -299,10 +299,29 @@
   ./tools/gpu-ladder-report.sh --state ~/bench/explore-state.tsv   # progress, no root
   ```
 
-  🐛 **Known bug, fix pending:** `gpu-uv-explore.sh --status` demands root although it only
-  reads files — the root check sits above the status branch. Use the report command above
-  instead, which needs no root. **Not fixed while a run is in progress:** bash reads a
-  script incrementally as it executes, so editing a live one can corrupt it mid-run.
+  ### 🐛 Open bugs — fix once no sweep is running
+
+  Bash reads a script incrementally as it executes, so **none of these get fixed while a
+  run is in progress**; editing a live script can corrupt it mid-run.
+
+  | # | Bug | Effect | Severity |
+  |---|---|---|---|
+  | 1 | **`run_rung` records Ctrl-C as `FAIL`** ([`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh)) | a cancelled rung becomes a permanent false wall — the anchor is treated as bounded and that clock is never retested. Observed 2026-08-04: `1000mV/3100` marked FAIL after **158 s** of a ~670 s rung, with **0 passes, 0 device-lost, 0 Xid** | **corrupts results** |
+  | 2 | `--status` demands root | the root check sits at line ~65, above the status branch at ~90, though `--status` only reads files | annoyance — workaround below |
+  | 3 | "benchmark runs as g (root has the wrong HOME and no display access)" | reads as a warning; it is a confirmation that the privilege drop worked | cosmetic |
+
+  **Fix for #1:** a soak killed by a signal returns 130/143 — record `INTERRUPTED`, not
+  `FAIL`, and have `--resume` treat it as unproven and re-run it, exactly as it already
+  does for a rung that started and never finished.
+
+  **Workaround for #2** — the report needs no root and reads any state file:
+  ```fish
+  ./tools/gpu-ladder-report.sh --state ~/bench/explore-latest.tsv
+  ```
+
+  ⚠️ **A commit message on 2026-08-04 claimed #2 was fixed. It was not** — the status
+  branch was moved during a rewrite and the root check was left above it. Recorded
+  because an unverified fix claim is worse than an open bug: it stops anyone looking.
 
   **Granularity is a resolution choice, refinable after the fact.** The default grid is
   50 mV × 100 MHz, so a true optimum at e.g. 970 mV / 2 950 MHz would never be tested.
