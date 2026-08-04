@@ -184,7 +184,29 @@
   sudo ~/.local/bin/nvcurve write --global --delta 50
   sudo ~/.local/bin/nvcurve read | head -20        # confirm the offsets landed
   ```
-  **Step +50 → +100 → +150**, re-testing at each step. Revert instantly with `sudo ~/.local/bin/nvcurve write --reset`, or reboot.
+  **Step +50 → +100 → +150 → …**, re-testing at each step. Revert instantly with `sudo ~/.local/bin/nvcurve write --reset`, or reboot.
+
+  ### How far to push, and when to stop
+
+  Expected payoff, derived from this card's own curve points holding **2 917 MHz** (V² model — ranks correctly, magnitudes must be measured not assumed):
+
+  | Offset | Voltage needed for 2 917 MHz | Power at that clock |
+  |---|---|---|
+  | stock | 1 075 mV | — |
+  | +50 | ~1 047 mV | −5 % |
+  | +100 | ~1 025 mV | −9 % |
+  | +150 | ~1 010 mV | −12 % |
+  | +200 | ~995 mV | −14 % |
+
+  Roughly **4–5 % power per +50 MHz**, because the top of this curve is nearly flat in frequency against voltage. So **+50 alone is barely worth the trouble** — it is a safety-first first step, not a destination. Community Blackwell undervolts commonly land between **+150 and +400**; where this silicon's wall sits is unknown until measured.
+
+  **Three rules that matter more than the final number:**
+
+  1. **Do not live at the last stable step — back off one.** If +300 passes and +350 fails, run **+250**. Margin is needed for a hot day, a driver update, and silicon aging. The last passing setting is the *edge*, not the target.
+  2. **Finer steps near the wall.** +50 while gains are obvious; **+25** once anything looks marginal.
+  3. **Passing five minutes is not passing.** Instability is probabilistic — a setting can survive a short run and fail after an hour. The final candidate needs a long soak plus real gaming before it earns persistence.
+
+  **Stop on power, not score.** The goal is the same clock at less power. If score rises *and* power rises, that is an overclock, not an undervolt — legitimate, but it costs heat, and this card converts heat back into lost clock at 2.5 MHz/°C.
 
   ### Three tools, each for what it is actually good at — run in this order
 
