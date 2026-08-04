@@ -60,6 +60,61 @@ unpublished. The widely repeated "~105 °C" figure could not be confirmed for GD
 specifically — **do not treat 100 °C as "5 °C from the limit"**, because that limit
 is not established. The card's own firmware not throttling is the stronger evidence.
 
+## The FE does run hot — but the baseline above overstates it
+
+Two things are true at once and must not be conflated.
+
+**The card design runs warm, and that is a documented reviewer finding, not a
+feeling.** 575 W through a 2-slot cooler; GamersNexus measured the FE at core 72 °C
+and **memory 89–90 °C on a gaming loop at 21–22 °C ambient**, and explicitly flagged
+it as *"ran warm… concern for hotbox cases"*
+([review](https://gamersnexus.net/gpus/nvidia-geforce-rtx-5090-founders-edition-review-benchmarks-gaming-thermals-power)).
+AIB triple-fan cards do better — a Gigabyte AORUS MASTER managed core 73.9 °C and
+GDDR7 junction 74 °C under FurMark, which is a different league of cooler.
+
+**But this machine's numbers are NOT comparable to those.** The baseline above is
+`gpu_burn` — a power virus holding 575 W continuously. Reviewer figures are gaming
+loops. Comparing worst case against typical makes any card look bad.
+
+⚠️ **Gap: no gaming-load measurement exists for this card.** Until one does, "is my
+GPU unusually hot?" is unanswerable — the only like-for-like comparison is a
+representative gaming/render load at a known ambient. Ambient here is also
+unmeasured, and it enters directly: GamersNexus ran at 21–22 °C, and a warm room
+adds to every number one-for-one.
+
+```sh
+# a fair comparison against reviewer figures
+sudo ./tools/gpu-thermal.sh gaming -l "<game or superposition benchmark>" -t 900
+```
+
+## Reducing the heat: what is worth doing, ranked
+
+The 8.8 °C hotspot delta means the cooler-to-die interface is fine, so **there is no
+defect to repair**. What remains is lowering heat *input* or improving heat *removal
+from the case*.
+
+1. **Power limit — biggest lever, instant, reversible, no BIOS.** Adjustable
+   **400–600 W** (currently 575). This is the GPU's ECO Mode, and the CPU result
+   suggests the shape: community reports cluster around ~90 % performance at
+   ~70–75 % power. One command, revertible on the spot, and it survives nothing —
+   re-apply after reboot if kept.
+   ```sh
+   sudo nvidia-smi -pl 450
+   sudo ./tools/gpu-thermal.sh pl450          # then diff against gpu-stock
+   sudo nvidia-smi -pl 575                    # revert
+   ```
+   Do this **before** clock-offset undervolting: it is one variable, it cannot
+   destabilise anything, and it establishes how much of the heat is simply power.
+2. **GPU-driven case fan curve** — see below; targets a measured lag, costs nothing.
+3. **Clock-offset undervolting** (`nvidia-settings` offset + reduced power limit) —
+   the fuller technique, more performance retained per watt, but it can destabilise
+   and needs its own validation. See the GPU item in [todo.md](../todo.md).
+
+❌ **Do not repaste or replace pads.** The FE ships with liquid-metal TIM, opening it
+is high-risk, and the measured 8.8 °C delta says there is nothing to gain — that is
+what a good mount looks like. The 5070 Ti repaste story is about a card whose hotspot
+hit 107 °C; this one does not.
+
 ## Open: case fans are driven by CPU temperature only
 
 Under a GPU-only load the CPU stays idle, so a CPU-temperature fan curve has no
