@@ -5,7 +5,7 @@
 
 **Goal:** the same work at a lower voltage — less power and heat for equal performance.
 On the 5090 this delivered **−9.5 % power at unchanged performance** when coasting, and
-**+4.1 % more work at the same wattage** when power-capped — both regimes, nothing traded.
+**~+3.9 % more work at the same wattage** when power-capped — both regimes, nothing traded.
 
 ⚠️ **Do not claim a performance gain from block comparisons.** Measuring four passes at
 one setting, then four at the next, charges any drift between the blocks to the setting.

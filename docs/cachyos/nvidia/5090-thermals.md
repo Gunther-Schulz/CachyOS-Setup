@@ -730,6 +730,7 @@ temperature (the tool waits for it):
 |---|---|---|---|
 | frames delivered | 53 308 | 55 468 | **+4.1 %** |
 | FPS avg | 444 | 462 | **+4.1 %** |
+| FPS avg, repeat session | 443 | 459 | **+3.6 %** |
 | power | 575 W | 575 W | capped, both |
 | start → max temp | 45 → 87 °C | 46 → 87 °C | matched |
 | **reported** core clock | 2 498 MHz | 2 312 MHz | **−7.4 %** ← see below |
@@ -812,12 +813,25 @@ voltage sustains, the GPU stretches the clock domain internally while `nvidia-sm
 reporting the requested value. No crash, no Xid, no visual artifact, just quietly less
 performance.
 
-⚠️ **One alternative is still open on the measured run: memory clock was not sampled.**
-This card exposes several memory states (405 / 810 / 7 001 / 13 801 / 14 001 MHz), so it is
-a free variable, not a constant, and frames-per-core-clock is only a valid inference with
-it held fixed. `gpu-capped-probe.sh` now samples `clocks.mem` and refuses the conclusion if
-it moved — a re-run closes this in four minutes. The **+4.1 % more work at the same power**
-is unaffected either way; it is a measurement, not an inference.
+**Memory clock is ruled out — measured, not assumed.** It was the one alternative the
+frames-track-core-clock inference could not exclude, and this card exposes five memory
+states (405 / 810 / 7 001 / 13 801 / 14 001 MHz), so it was a candidate rather than a
+constant. Sampled 2026-08-04 23:05: **14 001 MHz on all 40 loaded samples of both runs,
+zero transitions.** `gpu-capped-probe.sh` samples `clocks.mem` every run and will refuse
+the stretching conclusion outright if it moves.
+
+**And the discrepancy is systematic, not a single reading.** Two independent sessions, each
+temperature-matched, each deriving the real clock ratio from delivered frames:
+
+| session | stock | setting | work | reported clock | implied over-report |
+|---|---|---|---|---|---|
+| 20:58 | 444 FPS | 462 FPS | +4.1 % | 2 498 → 2 312 MHz | **12.4 %** |
+| 23:05 | 443 FPS | 459 FPS | +3.6 % | 2 500 → 2 307 MHz | **12.3 %** |
+
+The stock arms agree to 0.2 %, so the baseline is stable and the spread lives in the setting
+arm — the capped gain is **~3.9 %**, not 4.1. But the over-report lands within 0.1 % of
+itself across two sessions. Noise does not reproduce to a tenth of a percent; a fixed
+offset in what `nvidia-smi` reports does.
 
 **Consequence for the method:** a stability soak cannot find the optimum on its own. The
 useful ceiling is set by *score*, and it arrives **before** the crash — here a full 100 MHz
