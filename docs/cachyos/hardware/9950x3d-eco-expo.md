@@ -43,8 +43,17 @@ limiter clamping, not a coincidence, and 142 W is exactly the 105 W TDP tier's P
 This was the open question when both were set in the same visit.
 
 **Single-thread is untouched**, as designed: ECO caps sustained package power, and one
-core boosting never approaches that ceiling. This is also why ECO was never going to
-quieten the fans — see the fan-surge item in [todo.md](../todo.md).
+core boosting never approaches that ceiling.
+
+**Keep ECO — light load is what makes fan noise, and ECO helps where it can.** Measured
+2026-08-04: **one thread peaks Tctl at 68.5 °C while all sixteen peak at 62.5 °C**, at
+2.6× less power. Single-core boost puts maximum frequency *and* voltage into one core,
+concentrating heat where the IHS cannot spread it; all-core under ECO runs 4 325 MHz at
+much lower per-core voltage across sixteen cores. Since the fan curve follows Tctl, it
+ramps harder for a single-threaded task than for a full load. Consequences: disabling
+ECO would **not** reduce the surging (it does not touch single-core boost) and **would**
+make heavy loads loud again. The fix for surging is Curve Optimizer plus fan-curve
+hysteresis — see the fan item in [todo.md](../todo.md).
 
 **The performance cost is larger than planned.** The work was scoped around "the last
 ~100 W buys a few percent"; the real multicore cost is **12.4 %**. The clock drop
