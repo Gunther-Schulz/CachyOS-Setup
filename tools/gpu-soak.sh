@@ -157,9 +157,15 @@ GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen "$SCRE
           -benchmark 1 -count "$PASSES" -close 1
           -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT"
           -times "$OUT/frametimes.txt" )
+# HARD TIMEOUT. A wedged GravityMark (hung, not crashed) would otherwise block forever
+# and stall an unattended ladder with no verdict at all. Budget = passes x 167s + 25%
+# + 120s slack; exceeding it is itself a failure signal, not a reason to keep waiting.
+BUDGET=$(( PASSES * 167 * 125 / 100 + 120 ))
+say "hard timeout: ${BUDGET}s (a wedged benchmark must not stall the run)"
+
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
   say "running the benchmark as $SUDO_USER (root would use the wrong HOME and display)"
-  ( cd "$(dirname "$GM")" && sudo -u "$SUDO_USER" \
+  ( cd "$(dirname "$GM")" && timeout -k 20 "$BUDGET" sudo -u "$SUDO_USER" \
       DISPLAY="${DISPLAY:-:0}" \
       WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
       XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" \
@@ -167,7 +173,7 @@ if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
       HOME="$home" \
       ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
 else
-  ( cd "$(dirname "$GM")" && ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
+  ( cd "$(dirname "$GM")" && timeout -k 20 "$BUDGET" ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
 fi
 GM_RC=$?
 chown -R "${SUDO_USER:-$USER}" "$OUT" 2>/dev/null
@@ -219,6 +225,14 @@ if [ "$GM_RC" -eq 127 ] \
   say ""
   say "   Fix the launch problem and re-run. Nothing about the GPU is in question here."
   exit 2
+fi
+
+if [ "$GM_RC" -eq 124 ] || [ "$GM_RC" -eq 137 ]; then
+  say "❌ FAILED — the benchmark WEDGED and hit the ${BUDGET}s hard timeout."
+  say "   It stopped responding without exiting. That is a hang, and it counts as a"
+  say "   failure at this setting — completed $NRUNS of $PASSES passes before stalling."
+  [ "$XID" -gt 0 ] && { say "   Xid detail:"; tail -5 "$OUT/xid.log" | sed 's/^/     /' | tee -a "$LOG"; }
+  exit 1
 fi
 
 if [ "$XID" -gt 0 ] || [ "$DEVLOST" -gt 0 ] || [ "$NRUNS" -lt "$PASSES" ]; then
