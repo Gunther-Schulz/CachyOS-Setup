@@ -29,6 +29,7 @@
 #   sudo ./tools/gpu-uv-explore.sh --screen 1 --anchors "1000 950 900" --passes 6
 #   sudo ./tools/gpu-uv-explore.sh --resume     # CONTINUE after Ctrl-C or a hang
 #   ./tools/gpu-uv-explore.sh --status          # report only, change nothing
+#   sudo ./tools/gpu-uv-explore.sh --dry-run    # show the derived ladder, write nothing
 #   ./tools/gpu-ladder-report.sh --state ~/bench/explore-state.tsv
 
 set -uo pipefail
@@ -48,6 +49,7 @@ SCREEN=0
 WINDOWED=""
 RESUME=0
 STATUS=0
+DRYRUN=0
 
 usage() { sed -n '2,34p' "$0"; exit "${1:-0}"; }
 
@@ -62,6 +64,7 @@ while [ $# -gt 0 ]; do
     --windowed) WINDOWED="--windowed"; shift ;;
     --resume) RESUME=1; shift ;;
     --status) STATUS=1; shift ;;
+    --dry-run) DRYRUN=1; shift ;;
     -h|--help) usage 0 ;;
     *) echo "unknown option: $1" >&2; usage 1 ;;
   esac
@@ -117,9 +120,10 @@ fi
 #     clock the stock curve only offers at a higher voltage.
 #
 # Sanity check on this machine's 5090 (curve top 1240 mV / 3180 MHz): derives
-# 1054/1004/954/904/868 mV and 2800-3200 MHz — within one step of the hand-picked
-# 1000/950/900/875 and identical on clocks. The derivation reproduces the manual choice,
-# which is the evidence that it is a rule and not a fit to one card.
+# 1050/1000/950/900 mV and 2800/2900/3000/3100/3200 MHz — clocks IDENTICAL to the
+# hand-picked ladder and anchors overlapping on three of four (it adds a safer 1050 first
+# rung and drops 875). Reproducing the manual choice from the curve alone is the evidence
+# that this is a rule and not a fit to one card.
 derive_ladder() {
   local json
   json=$("$NVCURVE" read --json 2>/dev/null) || return 1
@@ -167,6 +171,28 @@ if [ -z "$ANCHORS" ] || [ -z "$CLOCKS" ]; then
   fi
 fi
 [ "${FLOOR:-0}" -gt 0 ] || FLOOR=$(echo "$CLOCKS" | tr ' ' '\n' | sort -n | head -1)
+
+# --dry-run: show the ladder and stop. An overnight sweep is a big commitment to make on
+# faith, and the derivation above is the part most likely to be wrong on an unfamiliar
+# card — a ladder whose clocks are nonsense should be visible in a second, not at 3 a.m.
+if [ "$DRYRUN" = 1 ]; then
+  echo
+  echo "=== DRY RUN — nothing will be written to the GPU ==="
+  echo "anchors: $ANCHORS mV"
+  echo "clocks:  $CLOCKS MHz"
+  echo "floor:   $FLOOR MHz  (an anchor that cannot hold this ends the sweep)"
+  echo "passes:  $PASSES screening / $CONFIRM confirming"
+  echo
+  echo "Worst case it walks every rung:"
+  na=$(echo "$ANCHORS" | wc -w); nc=$(echo "$CLOCKS" | wc -w)
+  echo "  $na anchors x $nc clocks = $(( na * nc )) rungs, ~$(( na * nc * PASSES * 167 / 3600 )) h"
+  echo "  In practice far fewer: lower anchors start at the previous maximum and walk"
+  echo "  DOWN to the first rung that passes, and the stop rules end a climb early."
+  echo
+  echo "Sanity-check the clocks against what the card actually runs at stock:"
+  echo "  nvidia-smi --query-gpu=clocks.max.sm --format=csv"
+  exit 0
+fi
 
 BASE_DONE=0
 declare -A ANCHOR_MAX ANCHOR_DONE
