@@ -117,7 +117,7 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
-- **Desktop — READY: GPU stress test, to be run alongside `nvidia-gpu-sensors --watch`.** The point is not "does it crash" but capturing **hotspot-minus-edge under sustained load** — the delta that reveals a bad mount or dried thermal pads, and which idles at 8 °C on this card. Two load types, both needed, because they stress different things:
+- **Desktop — READY: GPU stress test, to be run alongside `nvidia-gpu-sensors --watch`.** The point is not "does it crash" but capturing **hotspot-minus-core under sustained load** — the delta that reveals a bad mount or dried thermal pads, and which is **4 °C at idle** on this card (measured 2026-08-04, once the root hotspot read worked; an earlier version of this line said 8 °C, which was the memory−core delta from before hotspot was readable). Three load types, because they stress different things:
 
   | Tool | Install | Run | What it loads |
   |---|---|---|---|
@@ -125,12 +125,24 @@
   | FurMark 2 | AUR `furmark` | GUI / OpenGL + Vulkan stress | graphical power-virus, exercises the render path |
   | Unigine Superposition | AUR `unigine-superposition` | GUI benchmark | realistic game-like load, closest to actual use |
 
+  Setup, once:
+  ```fish
+  yay -S gpu-burn-git
+  mkdir -p ~/bench
+  command -v gpu_burn gpu-burn      # confirm the installed binary name before relying on it
+  ```
   Protocol — three terminals, load running ≥10 minutes so the heatsink actually reaches steady state (the first 2–3 minutes tell you nothing):
   ```fish
+  # terminal 1 — the sensors nvidia-smi cannot show
   sudo ~/dev/vendor/nvidia-gpu-sensors/build/nvidia-gpu-sensors --watch
+
+  # terminal 2 — power/clocks/util logged to file
   nvidia-smi dmon -s pucvmet -o DT -f ~/bench/gpu-stock.csv
-  ./gpu_burn 900     # or FurMark / Superposition
+
+  # terminal 3 — the load
+  gpu_burn 900     # or FurMark / Superposition
   ```
+  ⚠️ `gpu_burn` vs `gpu-burn` — **unverified which name the AUR package installs**; upstream's own binary is `gpu_burn`, built in-tree, so a from-source build is run as `./gpu_burn`. Check with the `command -v` line above rather than assuming.
   **Compare against the idle baseline above** (core 46.0 / mem 58.0 / hotspot 50.0). What to read:
   - **hotspot − core delta.** Idle it is 4 °C. A modest rise under load is normal; a *disproportionate* one is the signature of poor die contact — a bad mount, pump-out, or dried paste.
   - **memory temperature**, already the hottest sensor at idle. On a 575 W card this is what actually throttles.
