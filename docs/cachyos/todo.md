@@ -75,7 +75,10 @@
 
   **Source reviewed before running (2026-08-04, all 772 lines).** Every register operation is `NV2080_REG_OP_READ_32` — **there is not a single register write in the file**; the `mmap` is `PROT_READ`; no network, no file writes, no subprocess. The Blackwell-only offsets are gated behind a chip-id check (`NV_PMC_BOOT_0 >> 20` in `0x1B0…0x1BF`) so they are never touched on other hardware. Worst realistic failure is an ioctl returning an error.
 
-  **Placement (not yet done):** the scratchpad clone is ephemeral. Per `~/dev/README.md` this is productive third-party code → **`~/dev/vendor/`, version-pinned**. Move it there and record the pinned commit before relying on it.
+  ✅ **Installed at `~/dev/vendor/nvidia-gpu-sensors/`, pinned at commit `1775fd4`** ("nvidia-gpu-sensors: narrow hot-spot memory range", 2026-08-03) — per `~/dev/README.md`, productive third-party code lives in `vendor/`, version-pinned. Built binary verified working from that path 2026-08-04. Run it as:
+  ```fish
+  sudo ~/dev/vendor/nvidia-gpu-sensors/build/nvidia-gpu-sensors --watch
+  ```
 
   **⚠️ Interface stability caveat:** this rides an undocumented ioctl ABI that has changed across driver releases. It is a diagnostic tool, not a monitoring dependency — **re-verify its output after every NVIDIA driver update**, and treat an implausible reading as the tool breaking rather than the GPU misbehaving.
 
@@ -224,12 +227,20 @@
      ```
      A lane known to be dead and a lane believed live produce the same sentence. That makes the whole summary worthless as evidence of liveness, for every lane — including the ones that look reassuring. (`No ARM processor errors` on an x86 machine is the same joke, more obviously.)
 
-     **The only thing that settles it is making the lane go red on a planted error.** `mce-inject` is available: the kernel module ships with this kernel (`/lib/modules/…/arch/x86/kernel/cpu/mce/mce-inject.ko.zst`), the userspace tool is AUR-only and **not currently installed** (nothing owns `/usr/bin/mce-inject`).
+     **The only thing that settles it is making the lane go red on a planted error.** Kernel support is present — `CONFIG_X86_MCE_INJECT=m` and `CONFIG_ACPI_APEI_EINJ=m` (`/proc/config.gz`, checked 2026-08-04) — so the modules exist:
+     - `/lib/modules/7.1.5-1-cachyos/kernel/arch/x86/kernel/cpu/mce/mce-inject.ko.zst`
+     - `einj` (ACPI APEI error injection), currently unloaded — `/sys/firmware/acpi/einj` does not exist
+
+     ❌ **The userspace `mce-inject` tool is NOT packaged for Arch — not in the repos, not in the AUR** (`yay -S mce-inject` → "No AUR package found"). An earlier note here called it "AUR-only"; that was inferred from `pacman -Qo` returning no owner, which only proves it is not installed. Upstream is [`andikleen/mce-inject`](https://github.com/andikleen/mce-inject), buildable from source.
+
+     **Try the kernel interfaces first — they need no userspace tool:**
      ```fish
-     yay -S mce-inject
-     pacman -Ql mce-inject | grep -iE 'test|example|share'   # shipped sample .mce files
+     sudo modprobe einj;       ls /sys/firmware/acpi/einj        # cleanest if the BIOS exposes EINJ
+     sudo modprobe mce-inject; ls /sys/kernel/debug/mce-inject/ /sys/kernel/debug/mce/
      ```
-     Then inject a **corrected** (CE) error and confirm it appears in `ras-mc-ctl --errors`. ⚠️ **Corrected only** — injecting an uncorrected/fatal status word panics the machine on purpose. The exact AMD UMC status-word encoding should be taken from the package's own sample files, not hand-written from memory.
+     EINJ needs firmware tables that consumer boards frequently omit, so it may simply not appear. Whichever interface materialises, read its actual file list before writing to it — the field layout differs between them and is not worth reconstructing from memory.
+
+     ⚠️ **Corrected (CE) errors only.** An uncorrected/fatal status word panics the machine by design — that is the tool working as intended, not a mistake to discover experimentally.
 
      Until that has gone red once, treat **every** clean `ras-mc-ctl` result in this repo — including the 2026-08-03 baseline above — as *unproven*, not as evidence of health.
 
