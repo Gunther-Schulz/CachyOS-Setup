@@ -479,9 +479,23 @@ reading — which is exactly the trap that made the earlier 493 W figure mislead
 | Tool | Corpus | RTX 5090 **Linux** entries |
 |---|---|---|
 | **Phoronix Test Suite** / OpenBenchmarking.org (AUR `phoronix-test-suite`) | large, ongoing, GPU-filterable | ✅ **confirmed present**, incl. a Unigine set (`2501310-PTS-UNIGINER91`) and gaming sets (`2501303-PTS-NVIDIAJA55`) |
-| GravityMark | real GPU/API/OS filters exist | ❌ unconfirmed — and its **default view merges Windows+Linux and Vulkan+D3D12**, the same trap as Unigine's |
+| **GravityMark** ([leaderboard](https://gravitymark.tellusim.com/leaderboard/)) | ✅ **verified 2026-08-04**: every row carries `User \| Score \| FPS \| OS \| API \| GPU`, with filters for OS, API, GPU vendor, resolution, rendering mode. ~220 entries. | ⚠️ **filtering is CLIENT-SIDE** — `?os=linux` does not apply, so only a browser can use it. Whether Linux+5090 rows exist is **still unknown**; the default view is Windows-only. |
 | vkmark / glmark2 | on OpenBenchmarking | unconfirmed; scenes likely too light to load a 5090 |
 | **Unigine's own leaderboard** | — | ⚠️ **Cannot determine whether it segments by OS/API at all** — pages render empty to a fetcher. **So the 47–53 k comparison group's platform is unknown**, and the 33 % deficit may be measured against Windows/DirectX systems. |
+
+**Useful side finding — Vulkan is NOT handicapped on Windows.** GravityMark's Windows
+RTX 5090 entries, read directly from the leaderboard 2026-08-04:
+
+| API | scores |
+|---|---|
+| Vulkan | 188 638 · 162 452 · 149 268 |
+| Direct3D12 | 162 500 · 160 202 |
+
+They interleave, with the single highest result being **Vulkan**. So on Windows the two
+paths are equivalent for this engine — which means **a Linux Vulkan result is fairly
+comparable to a Windows one**, and the OpenGL-vs-DirectX confound that wrecked the
+Superposition comparison does not apply to a Vulkan-based test. That is what makes
+Vulkan the right API to standardise on for cross-platform comparison.
 
 **PTS is the answer to "make it comparable"** — Linux-to-Linux, and no upload needed:
 ```sh
