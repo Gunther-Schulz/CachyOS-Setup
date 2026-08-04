@@ -370,10 +370,41 @@ explanation 1 confirmed: the limiter clamps *frequency* while voltage holds at t
 requested curve point. Explanation 2 (load-line compensation inflating the reading)
 would have produced a constant offset regardless of power state; it did not.
 
-**A residual 252 MHz gap remains at 493 W**, unexplained — the card is not power-capped
-there, yet still sits below its curve value. Candidates not distinguished: the curve's
-frequency being a best-case bin rather than a sustained guarantee, current-droop at
-heavy real load, or a reliability guard. **Unverified.**
+### The 252 MHz residual: about half is temperature, measured
+
+All 85 loaded Superposition samples sat at **exactly 1.075 V** and below the power cap,
+which makes them a controlled set — voltage fixed, only temperature varying:
+
+| core temp | mean SM clock | mean power |
+|---|---|---|
+| 60 °C | **2 705 MHz** | 475 W |
+| 68 °C | 2 677 MHz | 486 W |
+| 74 °C | 2 669 MHz | 485 W |
+| 80 °C | 2 643 MHz | 503 W |
+| 82 °C | **2 648 MHz** | **505 W** |
+
+**Pearson r = −0.737 over 85 samples, slope −2.5 MHz per °C.** A clean monotonic
+relationship: NVIDIA's boost algorithm steps clocks down with temperature independently
+of the power limit, so a hot card is slower at the same voltage.
+
+Accounting for the gap: 60 → 82 °C costs ~57 MHz directly. Extrapolating the slope to a
+cold card (~30 °C) gives ~2 780 MHz against the curve's 2 917 — so temperature plausibly
+explains **~115 of the 252 MHz, leaving ~137 MHz still unexplained.** ⚠️ That
+extrapolation runs well outside the measured 60–82 °C range and is not reliable; the
+measured slope is solid, the extrapolation is illustrative. Remaining candidates,
+undistinguished: the curve frequency being a best-case bin rather than a sustained
+guarantee, current droop at load, or a reliability guard.
+
+### Leakage is visible in the same data — and it argues for the undervolt
+
+Look at the power column above. From 60 °C to 82 °C the card draws **+30 W (475 → 505)
+while delivering 57 MHz LESS**, at identical voltage and workload. That is silicon
+leakage: a hotter chip converts fewer watts into work.
+
+Combined effect ≈ **8.6 % efficiency lost across 22 °C.** Two consequences worth
+carrying: any benchmark comparison must control for starting temperature, and **cooling
+and undervolting compound** — less voltage means less heat means less leakage means more
+clock per watt, in the same direction twice.
 
 ⚠️ **This does NOT establish "the card is not power-limited at gaming load."** Superposition
 on Linux runs **OpenGL 4.4**, and its 4K Optimized score here was ~33 % below comparable
