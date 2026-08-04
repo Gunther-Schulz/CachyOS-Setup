@@ -80,9 +80,42 @@
   - ECO does not touch single-core boost (measured: +0.4 % throughput, 5 360 vs 5 368 MHz), so **the surging would be identical without it**.
   - Removing it takes all-core back to 199 W, and the quiet heavy-load behaviour observed during the benchmark is the one acoustic *improvement* actually gained.
 
-  **What actually targets the surging, in order:**
-  1. **Curve Optimizer, negative.** It lowers voltage across the boost curve, and the whole 1–8 thread band is voltage-driven with the power cap not yet binding — power density scales with V². CO acts precisely where the heat is and ECO cannot reach. This is the on-target fix, already planned (section C); the sweep above promotes it from an efficiency nicety to **the** answer for the noise complaint.
-  2. **Fan-curve hysteresis / response delay** in `coolercontrol 4.3.1-2` (installed; `fan-control/` holds the scripts and channel labels), plus a speed floor so it does not fully drop and re-surge. User space, not Q-Fan — operator preference and the pre-existing plan.
+  ### ⭐ The complaint, stated precisely (operator, 2026-08-04)
+
+  > *"More fan noise when I play an intensive game is fine, it's a willing tradeoff. My
+  > main concern is daily desktop work, that my fans keep spinning up and down. During
+  > normal desktop work the GPU stays silent pretty much and it's my case/AIO fans that
+  > keep changing RPM that's the most annoying."*
+
+  Three consequences, and they reorder everything:
+
+  1. **The problem is CYCLING, not temperature.** Absolute loudness under load is
+     accepted. What grates is RPM changing up and down during light work. A fix that
+     lowers temperature but leaves the fans hunting solves nothing.
+  2. **It is CPU-side. The GPU is irrelevant to it** — idle during desktop work. So
+     GPU undervolting, GPU fan curves, and **tying case fans to GPU temperature do
+     nothing for this complaint**; that last one would only act while gaming, where the
+     noise is already acceptable.
+  3. **Gaming noise is explicitly not a problem**, so any fix that trades quiet-under-load
+     for performance is a fine trade here.
+
+  **What actually targets the surging, in order — reordered 2026-08-04:**
+
+  1. ⭐ **Fan-curve hysteresis / response delay** in `coolercontrol 4.3.1-2` (installed;
+     `fan-control/` holds the scripts and channel labels), plus a speed floor so the fans
+     do not fully drop and re-surge. **This is the direct fix and it is available today** —
+     it addresses cycling itself rather than the temperature that drives it, and it
+     depends on no BIOS visit, no Curve Optimizer, and none of the GPU work.
+  2. **Curve Optimizer, negative.** Lowers voltage across the boost curve, and the whole
+     1–8 thread band is voltage-driven with the power cap not yet binding — power density
+     scales with V². It reduces the Tctl spikes that *drive* the cycling, so it makes
+     hysteresis's job easier. Second because it needs a BIOS visit and a validation
+     regimen, while hysteresis needs neither.
+
+  ❌ **Deprioritised for this complaint: GPU-driven case fans.** Still worth having for
+  the gaming case (measured: GPU at 575 W with the CPU idle drove Tctl from ~51 °C to
+  65–72 °C via case-air heat soak before the fans responded) — but it cannot help desktop
+  surging, because the GPU is not producing heat then.
 
   **Design the curve for the partial-load band, not for all-core.** The usual instinct is to set the knee against a full-load stress test; here that tunes against the *coolest* heavy case and leaves the fans free to scream at ~80 °C during a compile. The knee belongs around the 4–8 thread numbers above.
 
