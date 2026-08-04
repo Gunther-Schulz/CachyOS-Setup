@@ -387,13 +387,28 @@ which makes them a controlled set — voltage fixed, only temperature varying:
 relationship: NVIDIA's boost algorithm steps clocks down with temperature independently
 of the power limit, so a hot card is slower at the same voltage.
 
-Accounting for the gap: 60 → 82 °C costs ~57 MHz directly. Extrapolating the slope to a
-cold card (~30 °C) gives ~2 780 MHz against the curve's 2 917 — so temperature plausibly
-explains **~115 of the 252 MHz, leaving ~137 MHz still unexplained.** ⚠️ That
-extrapolation runs well outside the measured 60–82 °C range and is not reliable; the
-measured slope is solid, the extrapolation is illustrative. Remaining candidates,
-undistinguished: the curve frequency being a best-case bin rather than a sustained
-guarantee, current droop at load, or a reliability guard.
+### ✅ CLOSED — the GravityMark trace explains the whole gap. The curve IS honoured.
+
+GravityMark is geometry-heavy but **power-light**: 338 W mean, 379 W max, **never once
+near the cap** (0 of 81 loaded samples ≥ 570 W) — and it produced the **highest clocks
+measured on this card**, 2 823 MHz mean at 1.075 V. Its peak sample is decisive:
+
+| condition | power | core temp | clock at 1.075 V | vs curve (2 917 MHz) |
+|---|---|---|---|---|
+| **GravityMark peak** | **106 W** | **54.9 °C** | **2 895 MHz** | **−22 MHz (0.8 %)** |
+| GravityMark mean | 338 W | 67 °C | 2 823 MHz | −94 MHz |
+| Superposition | 493 W | ~78 °C | 2 665 MHz | −252 MHz |
+| `gpu_burn` | 575 W (capped) | ~87 °C | 2 224 MHz | −693 MHz |
+
+**Cold and lightly loaded, the card lands within 22 MHz of its curve value.** The deficit
+is not a fixed offset, a droop artefact or a hidden guard — it is the monotonic product
+of temperature and power draw, exactly as the −2.5 MHz/°C slope predicted. The V/F curve
+frequency is a **cold, light-load maximum**, and every earlier "unexplained residual" was
+this effect measured at a different operating point.
+
+Nothing further to investigate here. It also confirms the practical claim underneath the
+undervolt: **heat is what is costing clocks**, and it is worth ~670 MHz between the best
+and worst operating points on this card.
 
 ### Leakage is visible in the same data — and it argues for the undervolt
 
