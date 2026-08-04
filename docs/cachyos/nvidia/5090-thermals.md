@@ -136,7 +136,46 @@ testable**: run the load, watch for artifacts and
 "GPU has fallen off the bus"). Rare at modest offsets, and it happens under load —
 i.e. while testing, not while working.
 
-### The catch: on Linux, "undervolt" is built FROM the power limit
+### ❌ RETRACTED: "there is no V/F curve editor on Linux"
+
+**Wrong, twice over** (researched and code-inspected 2026-08-04):
+
+**1. A real per-point V/F curve editor exists for Linux.**
+[`ekojsalim/nvcurve`](https://github.com/ekojsalim/nvcurve) does Afterburner-style
+per-point curve editing, **explicitly tested on RTX 5090 / Blackwell**, by calling
+undocumented NvAPI functions through `libnvidia-api.so`. A LACT proof-of-concept for
+the same API path exists too ([issue #936](https://github.com/ilya-zlobintsev/LACT/issues/936),
+tested on a 5090).
+
+**2. The premise about Afterburner was also wrong.** Since **GPU Boost 3.0** (Pascal,
+2016) Afterburner does **not** set absolute voltage either. It sets a *frequency offset
+at each of up to 128 fixed voltage points* NVIDIA burns into the GPU
+([SkatterBencher](https://skatterbencher.com/nvidia-gpu-boost-3-0/)). So NVCurve is not
+an approximation of Afterburner — it is the same mechanism. "Set an absolute millivolt
+value" is unavailable on **both** operating systems for Pascal-and-later NVIDIA GPUs.
+
+**Safety, verified by reading its NvAPI surface rather than its README.** Every call it
+makes is either a clock write or a voltage *read*:
+
+| Call | Direction |
+|---|---|
+| `nvmlDeviceSetGpcClkVfOffset`, `nvmlDeviceSetMemClkVfOffset` | write — clock offsets, **public documented NVML** |
+| `SetClockBoostTable` (`0x0733E009` = `ClkVfPointsSetControl`) | write — per-point curve, undocumented NvAPI |
+| `GetCurrentVoltage`, `GetVoltBoostPercent` | **read only** |
+
+**There is no voltage-set path in the tool.** It cannot raise voltage above the points
+NVIDIA burned into the VBIOS, so the failure mode is instability, not overvoltage
+damage. It also carries a dedicated `safety.py` whose docstring states *"Every write
+path calls validate_write() before touching hardware."*
+
+⚠️ **Caveats, stated rather than buried.** The NvAPI functions are undocumented and the
+project's own warning says they "may change or disappear between driver releases" —
+re-verify after every driver update. Compatibility with **610.43.03 specifically is
+untested**; the confirmed testing was on adjacent versions. And unlike
+`nvidia-gpu-sensors` (772 lines of C, read fully before running), this is ~5 100 lines
+of Python plus a React UI — **the NvAPI surface was inspected, not the whole codebase.**
+
+### The power limit is a SEPARATE lever, not half of the undervolt
 
 NVIDIA does not expose a V/F curve editor on Linux — that is Afterburner on Windows.
 What exists here (confirmed on driver 610.43.03):
@@ -144,17 +183,21 @@ What exists here (confirmed on driver 610.43.03):
 - `GPUGraphicsClockOffsetAllPerformanceLevels`, range **−1000 … +1000** MHz
 - `nvidia-smi -pl`, range **400–600 W**
 
-The standard Linux undervolt is **both together**: cap power so the card selects a
-lower point on its V/F curve, then apply a **positive** clock offset to recover the
-clocks lost at that lower voltage. Net effect — near the original performance at
-meaningfully less voltage and heat.
+**Corrected 2026-08-04 — an earlier version of this section said the power limit was
+half the undervolt. It is not.** The real pairing is **offset + clock lock**:
 
-**A power-limit cut alone is not an undervolt**, it is just less power, and it costs
-performance proportionally. **A positive offset alone is an overclock** and makes heat
-worse. Declining the power limit therefore removes the mechanism rather than avoiding a
-downside; what remains is a *negative* clock offset, which lowers voltage only by
-running the card slower — strictly worse than the two-part technique at the same
-performance.
+- A **positive clock offset** shifts the whole V/F curve along the frequency axis: each
+  existing voltage point now yields more clock. On its own it does *not* raise voltage —
+  it only becomes an overclock if the card is left free to boost to a higher point.
+- **`nvidia-smi -lgc`** stops it doing exactly that. With the clock capped, the card
+  sources that clock from a *lower* point on the original curve → **less voltage at the
+  same clock**. **The lock, not the power limit, is what makes it an undervolt.**
+- **The power limit is orthogonal.** It never touches the curve; it makes the boost
+  algorithm back off to a lower point whenever the power budget would be exceeded. A
+  useful extra lever, stacked on top by preference — **not a requirement.**
+
+So declining the power limit costs nothing here. `offset + -lgc` is a complete
+undervolt without it (operator preference, 2026-08-04).
 
 ⚠️ **"The pairing is the only route" is under test, not established.** It is the
 commonly documented Linux recipe, which is not the same as a technical necessity —
