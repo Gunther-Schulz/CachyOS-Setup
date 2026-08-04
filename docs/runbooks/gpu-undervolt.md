@@ -4,7 +4,8 @@
 610.43.03). Written for a fresh context — no prior session knowledge assumed.
 
 **Goal:** the same work at a lower voltage — less power and heat for equal performance.
-On the 5090 this delivered **−9.5 % power at unchanged performance**.
+On the 5090 this delivered **−9.5 % power at unchanged performance** when coasting, and
+**+4.1 % more work at the same wattage** when power-capped — both regimes, nothing traded.
 
 ⚠️ **Do not claim a performance gain from block comparisons.** Measuring four passes at
 one setting, then four at the next, charges any drift between the blocks to the setting.
@@ -91,16 +92,22 @@ Measured on the 5090 at `1000mV/3100` against `1000mV/3000`:
 | | 3000 | 3100 | |
 |---|---|---|---|
 | reported clock | 2 802 MHz | 2 881 MHz | **+2.8 %** |
-| power | 333 W | 327 W | **−1.8 %** ← should have RISEN |
+| power | 333 W | 327 W | −1.8 % — *noise, see below* |
 | score | 82 329 | 79 778 | **−3.1 %** |
 
-Power goes as f·V². At a fixed voltage ceiling a real clock increase *must* cost power.
+⚠️ **Do not argue stretching from power.** A −1.8 % power reading is inside the
+session-to-session noise band, and that is what the original version of this argument used.
+What holds is the *score* deficit, −3.1 %, larger than the interleaved A/B noise band
+(±0.3 %) — so **the higher rung is not better**.
 
-⚠️ **The mechanism is a hypothesis, not a result.** That −1.8 % power argument used a
-difference smaller than the noise: `1000mV/3000` itself measured 333 W and 327 W in two
-sessions with no setting change at all. What holds is the *score* deficit, −3.1 %, which is
-larger than the interleaved A/B noise band (±0.3 %) — so **3100 is not better than 3000**,
-and the reason why is unsettled.
+**The clean test for stretching is a power-capped fixed-shader load**, which
+[`gpu-capped-probe.sh`](../../tools/gpu-capped-probe.sh) runs. Under a hard power cap,
+throughput follows the *real* core clock. If the card reports a **lower** clock while
+delivering **more** frames — same render size, same wattage, matched start temperature,
+memory clock unchanged — then the two clock readings are not measuring the same thing and
+the higher one is the false reading. That is a contradiction, not an inference from a
+power model, and the probe checks every one of those conditions before it will say so.
+This card's numbers: [`../cachyos/nvidia/5090-thermals.md`](../cachyos/nvidia/5090-thermals.md).
 
 **What survives regardless: a stability soak cannot find the optimum.** A rung can pass
 every stability check and still deliver less work, so the useful ceiling is set by score and
@@ -131,8 +138,13 @@ sudo ./tools/gpu-capped-probe.sh --mv 1000 --mhz 3000   # does it help when powe
 
 `gpu-ab-compare.sh` interleaves stock and setting within one session, counterbalanced ABBA,
 and reports a paired difference with a confidence interval. It is the only thing here that
-can support a performance claim. `gpu-capped-probe.sh` measures the other regime — pinned
-at the power limit, where the payout is more clock rather than less power.
+can support a coasting performance claim.
+
+`gpu-capped-probe.sh` measures the other regime — pinned at the power limit, where the
+payout is throughput rather than watts. It waits for a **matched starting temperature**
+before each run (a hotter card buys less clock inside a fixed budget, and an unmatched
+first measurement here understated the gain by a third), verifies both runs rendered at the
+same size, samples memory clock, and reads its verdict off **FPS, never reported clock**.
 
 ---
 
@@ -172,7 +184,7 @@ machine has to be brought back by hand.
 ## Verify the tools themselves
 
 ```fish
-./tools/test-gpu-uv-selection.sh    # 19 cases, no root, no GPU, ~1 s
+./tools/test-gpu-uv-selection.sh    # 20 cases, no root, no GPU, ~1 s
 ```
 
 Run it after touching `gpu-uv-explore.sh` or `gpu-flatten.sh`. It pins the selection rule,

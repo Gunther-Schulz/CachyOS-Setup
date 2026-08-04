@@ -94,7 +94,7 @@ probe() {   # $1 = label
   local sens="$OUT/$lbl.sensors.txt"
   local t0; t0=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ')
   ( for i in $(seq 1 $(( SECS / 3 + 6 )) ); do
-      nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits \
+      nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu,clocks.mem --format=csv,noheader,nounits \
         | tr -d ' ' | tr ',' ' '; sleep 3
     done > "$sens" ) &
   local sp=$!
@@ -111,7 +111,7 @@ probe() {   # $1 = label
 # not necessarily the one requested — a window manager can resize the window, and FurMark
 # renders to the window. Comparing FPS across two different render sizes is meaningless,
 # so the size is carried through and checked rather than assumed.
-readback() {   # $1 = label -> "res fpsavg frames clk W temp0 tempmax"
+readback() {   # $1 = label -> "res fpsavg frames clk W temp0 tempmax memclk"
   local lbl=$1
   local res fps fr
   res=$(awk -F: '/resolution/{gsub(/ /,"",$2); print $2}' "$OUT/$lbl.furmark.txt" 2>/dev/null)
@@ -119,9 +119,14 @@ readback() {   # $1 = label -> "res fpsavg frames clk W temp0 tempmax"
   fr=$(awk -F: '/frames/{gsub(/ /,"",$2); print $2}' "$OUT/$lbl.furmark.txt" 2>/dev/null)
   # Average only the LOADED samples. Idle samples at the head and tail would drag the
   # mean toward numbers the card never ran at under load.
-  read -r clk w tmax < <(awk '$2+0>300 {n++; c+=$1; p+=$2; if($3+0>t)t=$3+0}
-    END{if(n) printf "%.0f %.0f %.0f", c/n, p/n, t; else printf "0 0 0"}' "$OUT/$lbl.sensors.txt" 2>/dev/null)
-  echo "${res:-?} ${fps:-0} ${fr:-0} ${clk:-0} ${w:-0} $(cat "$OUT/$lbl.starttemp" 2>/dev/null || echo 0) ${tmax:-0}"
+  # Memory clock ($4) is sampled because the headline finding depends on it: "more frames
+  # at a lower reported core clock" only implicates the core clock reading if memory ran
+  # at the same speed in both runs. Unsampled, that was the one alternative the argument
+  # could not rule out. The flatten writes the core V/F curve only, so this should be
+  # constant — should is not measured, and the verdict below checks it.
+  read -r clk w tmax mem < <(awk '$2+0>300 {n++; c+=$1; p+=$2; m+=$4; if($3+0>t)t=$3+0}
+    END{if(n) printf "%.0f %.0f %.0f %.0f", c/n, p/n, t, m/n; else printf "0 0 0 0"}' "$OUT/$lbl.sensors.txt" 2>/dev/null)
+  echo "${res:-?} ${fps:-0} ${fr:-0} ${clk:-0} ${w:-0} $(cat "$OUT/$lbl.starttemp" 2>/dev/null || echo 0) ${tmax:-0} ${mem:-0}"
 }
 
 say "=== power-capped regime probe ==="
@@ -157,7 +162,7 @@ say "[1/2] stock ..."
 "$NVCURVE" write --reset >/dev/null 2>&1
 settle "$SETTLE_C" "$SETTLE_MAX"
 probe stock || say "  (furmark exited non-zero — check $OUT/stock.furmark.txt)"
-read -r s_res s_fps s_fr s_clk s_w s_t0 s_tmax < <(readback stock)
+read -r s_res s_fps s_fr s_clk s_w s_t0 s_tmax s_mem < <(readback stock)
 say "  rendered ${s_res}   FPS avg ${s_fps}   ${s_clk} MHz @ ${s_w} W   temp ${s_t0}->${s_tmax} C"
 
 if [ "$STOCK_ONLY" = 1 ]; then
@@ -174,7 +179,7 @@ settle "$(cat "$OUT/stock.starttemp" 2>/dev/null || echo "$SETTLE_C")" "$SETTLE_
   say "  FLATTEN REFUSED — see $OUT/flatten.log. Nothing was applied; stock result above stands."
   exit 1; }
 probe setting || say "  (furmark exited non-zero — check $OUT/setting.furmark.txt)"
-read -r c_res c_fps c_fr c_clk c_w c_t0 c_tmax < <(readback setting)
+read -r c_res c_fps c_fr c_clk c_w c_t0 c_tmax c_mem < <(readback setting)
 say "  rendered ${c_res}   FPS avg ${c_fps}   ${c_clk} MHz @ ${c_w} W   temp ${c_t0}->${c_tmax} C"
 "$NVCURVE" write --reset >/dev/null 2>&1
 
@@ -184,8 +189,9 @@ if [ "$s_res" != "$c_res" ]; then
   say "⚠️ RENDER SIZE DIFFERED between the two runs (${s_res} vs ${c_res})."
   say "   FPS is NOT comparable — different pixel counts. Clock and power still are."
 fi
-awk -v sc="$s_clk" -v sw="$s_w" -v sf="$s_fps" -v st="$s_t0" \
-    -v cc="$c_clk" -v cw="$c_w" -v cf="$c_fps" -v ct="$c_t0" -v same="$([ "$s_res" = "$c_res" ] && echo 1 || echo 0)" '
+awk -v sc="$s_clk" -v sw="$s_w" -v sf="$s_fps" -v st="$s_t0" -v sm="$s_mem" \
+    -v cc="$c_clk" -v cw="$c_w" -v cf="$c_fps" -v ct="$c_t0" -v cm="$c_mem" \
+    -v same="$([ "$s_res" = "$c_res" ] && echo 1 || echo 0)" '
 BEGIN {
   printf "  %-10s %10s %10s %10s\n", "", "stock", "setting", "change"
   printf "  %-10s %10d %10d %+9.1f%%\n", "clock",  sc, cc, (cc/sc-1)*100
@@ -216,8 +222,17 @@ BEGIN {
     printf "  ► SLOWER by %.1f%% at the same power — the setting costs throughput here.\n", (1-cf/sf)*100
   else
     print  "  ► No throughput change in the capped regime. The setting pays out as lower\n    power in coasting loads only — still the result that matters for most games."
-  if (cc < sc*0.98 && cf > sf*1.01)
-    printf "\n  NOTE: reported clock FELL %.1f%% while delivered work ROSE %.1f%%. A fixed\n    shader load cannot do that if both clocks were real — the higher reading is\n    the false one. Judge this regime on FPS only.\n", (1-cc/sc)*100, (cf/sf-1)*100
+  if (cc < sc*0.98 && cf > sf*1.01) {
+    # The "both clocks cannot be real" argument assumes the only thing that changed was
+    # the core clock. Memory clock is the alternative it does not rule out on its own, so
+    # it is measured and stated rather than assumed constant.
+    if (sm<=0 || cm<=0)
+      printf "\n  NOTE: reported clock FELL %.1f%% while delivered work ROSE %.1f%%. A fixed shader\n    load cannot do that if both core-clock readings measured the same thing. MEMORY\n    CLOCK WAS NOT SAMPLED in this run, so it remains an untested alternative\n    explanation. Judge this regime on FPS only.\n", (1-cc/sc)*100, (cf/sf-1)*100
+    else if (cm>sm*1.01 || cm<sm*0.99)
+      printf "\n  ⚠️ MEMORY CLOCK ALSO MOVED (%d -> %d MHz, %+.1f%%). The extra frames cannot be\n     attributed to the core-clock reading while memory is a free variable. Re-run\n     with memory pinned before drawing a conclusion about core-clock reporting.\n", sm, cm, (cm/sm-1)*100
+    else
+      printf "\n  NOTE: reported clock FELL %.1f%% while delivered work ROSE %.1f%%, with memory\n    clock unchanged (%d MHz). A fixed shader load cannot do that if both core-clock\n    readings measured the same thing — the higher one is the false reading. Judge\n    this regime on FPS only.\n", (1-cc/sc)*100, (cf/sf-1)*100, sm
+  }
   if (st>0 && ct>0 && (ct-st) > 8)
     printf "\n  ⚠️ the second run started %d C warmer (%d -> %d). At a fixed power cap a hotter\n     card buys less clock, so this comparison is biased AGAINST the setting.\n", ct-st, st, ct
 }'| tee -a "$LOG"

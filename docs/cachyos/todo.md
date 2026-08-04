@@ -187,7 +187,7 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
-- **Desktop — ✅ LARGELY DONE (2026-08-04): GPU undervolt. Setting chosen: `1000 mV / 3000 MHz` flatten — same performance at −9.5 % power.** (An earlier "+7.1 % score" claim is **RETRACTED**: it came from block comparison and inverted to −3.3 % when re-run hours later. Interleaved A/B settles it at +0.10 %, 95 % CI [−0.10 %, +0.29 %] — no measurable performance change. Power reproduced in every session.) Full ladder table, the 950 mV-vs-1000 mV margin argument, and the clock-stretching finding: [nvidia/5090-thermals.md](nvidia/5090-thermals.md) → *"RESULT: the undervolt ladder"*.
+- **Desktop — ✅ LARGELY DONE (2026-08-04): GPU undervolt. Setting chosen: `1000 mV / 3000 MHz` flatten — same performance at −9.5 % power when coasting, and +4.1 % more work at the same 575 W when power-capped.** (An earlier "+7.1 % score" claim is **RETRACTED**: it came from block comparison and inverted to −3.3 % when re-run hours later. Interleaved A/B settles it at +0.10 %, 95 % CI [−0.10 %, +0.29 %] — no measurable performance change. Power reproduced in every session.) Full ladder table, the 950 mV-vs-1000 mV margin argument, and the clock-stretching finding: [nvidia/5090-thermals.md](nvidia/5090-thermals.md) → *"RESULT: the undervolt ladder"*.
 
   ```fish
   sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000   # apply (NOT persistent across reboot)
@@ -291,13 +291,13 @@
   failure uninterpretable: was it the voltage, or the clock demanded at that voltage?
   Characterise one axis at a known-good anchor, then step the anchor down informed.
 
-  **The "both behaviours" property is automatic and needs no optimum.** A voltage ceiling
-  means power-capped work spends the freed headroom on **clock**, and unconstrained work
-  spends it on **less power** — the card decides per workload. Corroborated by a forum
-  report on the same GPU: +7.2 % score at unchanged 575 W in a power-capped benchmark,
-  and lower temps and power in gaming below the cap, from one setting. **So the
-  two-profile scheme (`quiet` / `performance`) is more than is needed** — one good
-  flatten covers both.
+  **The "both behaviours" property is automatic and needs no optimum — ✅ now MEASURED,
+  not predicted.** A voltage ceiling means power-capped work spends the freed headroom on
+  **throughput**, and unconstrained work spends it on **less power** — the card decides per
+  workload. Both halves measured here on one setting: **−9.5 % power** coasting
+  (`gpu-ab-compare.sh`) and **+4.1 % more work at the same 575 W** capped
+  (`gpu-capped-probe.sh`, 2026-08-04). **So the two-profile scheme
+  (`quiet` / `performance`) is more than is needed** — one good flatten covers both.
 
   ### Why the tuning measures GravityMark and only *watches* FurMark
 
@@ -313,11 +313,14 @@
   and the capped regime can only improve, because that is the case where lower voltage is
   pure upside. **Tune for the hard case, get the easy one free.**
 
-  FurMark is therefore *measured but never decided on*: `furmark_probe` runs at the
-  baseline and at the confirmed setting purely to quantify the free half. It feeds no
-  decision, by design. (This is also where the forum report's +7.2 % lives — his card was
-  capped at stock, ours is not, so his headline gain shows up on this machine only in the
-  capped regime.)
+  FurMark is therefore *measured but never decided on*: it quantifies the free half and
+  feeds no decision, by design. The measurement moved out of the explorer into
+  [`tools/gpu-capped-probe.sh`](../../tools/gpu-capped-probe.sh) — inside the sweep it sat
+  behind a completed 12-pass confirmation and fired **zero times** across a full day of
+  laddering, so the capped half went unmeasured while the coasting half was measured six
+  times. Standalone it takes four minutes. (A forum report on the same GPU claimed +7.2 %
+  here; ours measures +4.1 % — same direction, and his card was capped at stock where ours
+  is not.)
 
   ⚠️ **The premise: your games look like GravityMark, not FurMark.** If the titles you
   actually play *do* pin 575 W, the tuning is conservative — optimising the harder case

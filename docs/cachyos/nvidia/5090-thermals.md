@@ -709,13 +709,39 @@ Power was always the separable signal; score never was.
 Consistent with the clock column, which nobody read: delivered clock is unchanged by this
 setting. A setting that does not change the clock was never going to change the score.
 
-⚠️ **This also weakens the clock-stretching finding below.** Its power evidence was a
-1.8 % drop (333→327 W) — but `1000mV/3000` itself measured 333 W and 327 W in two
-sessions with no setting change at all. That argument used a difference smaller than the
+⚠️ **This also killed the power argument for clock stretching below.** That argument used a
+1.8 % power drop (333→327 W) — but `1000mV/3000` itself measured 333 W and 327 W in two
+sessions with no setting change at all, so it rested on a difference smaller than the
 noise. The *score* deficit at 3100 was 3.1 %, larger than the A/B noise band, so the
-conclusion "3100 is not better" stands; the mechanism does not.
+conclusion "3100 is not better" stands. The mechanism is now carried by the capped-regime
+evidence instead, which is direct rather than inferential.
 
+### The second payout: +4.1 % more work at the same 575 W
 
+The A/B above measures the **coasting** regime, where GravityMark leaves the card ~200 W
+below its limit. Pinned **at** the limit the same setting pays out in the other currency:
+the power budget is fixed, so less voltage per MHz becomes throughput.
+
+[`tools/gpu-capped-probe.sh`](../../../tools/gpu-capped-probe.sh), 2026-08-04, FurMark
+Vulkan, 120 s per run, both runs rendering **2509×1371** and started at a matched
+temperature (the tool waits for it):
+
+| | stock | 1000 mV / 3000 | |
+|---|---|---|---|
+| frames delivered | 53 308 | 55 468 | **+4.1 %** |
+| FPS avg | 444 | 462 | **+4.1 %** |
+| power | 575 W | 575 W | capped, both |
+| start → max temp | 45 → 87 °C | 46 → 87 °C | matched |
+| **reported** core clock | 2 498 MHz | 2 312 MHz | **−7.4 %** ← see below |
+
+An earlier run of the same probe gave **+2.7 %**, with the setting starting **34 °C
+warmer**. At a fixed power cap a hotter card leaks more and buys less clock, so that run
+was biased against the setting; removing the handicap moved the result to +4.1 %, in the
+predicted direction and by a plausible amount. **The probe now matches start temperature
+automatically** — that bias is a tool feature, not a thing to remember.
+
+So the setting is worth having in **both** regimes: −9.5 % power when coasting, +4.1 %
+work when capped. Nothing traded away in either.
 
 ⚠️ **The sweep is INCOMPLETE.** Planned anchors were `1000 950 900 875` mV; the
 `950mV/3100` hard lock ended the run after **1000 and 950 only**. Everything below is the
@@ -767,15 +793,31 @@ delivering *less* work:
 | | 1000 mV/3000 | 1000 mV/3100 | |
 |---|---|---|---|
 | reported clock | 2 802 MHz | 2 881 MHz | **+2.8 %** |
-| power | 333 W | 327 W | **−1.8 %** ← should have RISEN |
+| power | 333 W | 327 W | −1.8 % — *within noise, carries nothing* |
 | FPS | 494.0 | 483.3 | −2.2 % |
 | score | 82 329 | 79 778 | −3.1 % |
 
-Power tracks f·V². With the voltage ceiling unchanged, a genuine +2.8 % clock must draw
-more power. It drew **less** — so the effective clock is below the reported one. When the
-requested clock exceeds what the voltage sustains, the GPU **stretches the clock
-internally while `nvidia-smi` keeps reporting the requested value**. No crash, no Xid, no
-visual artifact, just quietly less performance.
+**The evidence is the capped-regime run, not this power column.** The original argument
+here was "power tracks f·V², so a real +2.8 % clock must cost power and it did not" — but
+`1000mV/3000` alone measured 333 W and 327 W across two sessions with nothing changed, so
+that 1.8 % was noise. It is struck.
+
+What replaces it is direct. Under FurMark at a fixed 575 W, same rendered size, matched
+temperature, **stock reported 2 498 MHz and delivered 444 FPS while the setting reported
+2 312 MHz and delivered 462 FPS.** FurMark is a fixed shader load, so throughput follows
+the real core clock. A card genuinely running 7.4 % *slower* cannot deliver 4.1 % *more*
+frames — the two readings are not measuring the same thing, and the high one is the one to
+distrust. That is what "clock stretching" names: when the requested clock exceeds what the
+voltage sustains, the GPU stretches the clock domain internally while `nvidia-smi` keeps
+reporting the requested value. No crash, no Xid, no visual artifact, just quietly less
+performance.
+
+⚠️ **One alternative is still open on the measured run: memory clock was not sampled.**
+This card exposes several memory states (405 / 810 / 7 001 / 13 801 / 14 001 MHz), so it is
+a free variable, not a constant, and frames-per-core-clock is only a valid inference with
+it held fixed. `gpu-capped-probe.sh` now samples `clocks.mem` and refuses the conclusion if
+it moved — a re-run closes this in four minutes. The **+4.1 % more work at the same power**
+is unaffected either way; it is a measurement, not an inference.
 
 **Consequence for the method:** a stability soak cannot find the optimum on its own. The
 useful ceiling is set by *score*, and it arrives **before** the crash — here a full 100 MHz
