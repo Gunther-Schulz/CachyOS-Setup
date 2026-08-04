@@ -375,9 +375,28 @@ there, yet still sits below its curve value. Candidates not distinguished: the c
 frequency being a best-case bin rather than a sustained guarantee, current-droop at
 heavy real load, or a reliability guard. **Unverified.**
 
-**The card never exceeded 1.075 V in either run**, though the curve extends to 1 240 mV.
-So at realistic gaming load this card is **voltage-ceiling limited, not power limited** —
-which is precisely the regime a curve edit addresses.
+⚠️ **This does NOT establish "the card is not power-limited at gaming load."** Superposition
+on Linux runs **OpenGL 4.4**, and its 4K Optimized score here was ~33 % below comparable
+5090 systems on the leaderboard. **100 % utilisation does not mean maximum power draw** —
+it means the scheduler always had work, not that the work was power-dense. A less
+efficient render path can keep the GPU busy while extracting less throughput per watt,
+so 493 W may reflect *this workload's* power density rather than the card's ceiling
+under a modern Vulkan or DirectX-via-Proton title with heavy RT and tensor work.
+
+**What survives regardless:** the clamping-vs-load-line question. That comparison only
+needed two *different power states*, and it got them — the 693 → 252 MHz change across
+the cap boundary is real whatever the workload's absolute weight.
+
+**What does not survive:** any claim about how this card behaves in real games. One
+benchmark on a weak API path is not that. **Open — the card never exceeded 1.075 V in
+either run despite a curve reaching 1 240 mV, so it may be voltage-ceiling limited at
+gaming load; but that is a hypothesis from two unrepresentative loads, not a finding.**
+
+**Next measurement, cheap and decisive:** Superposition **8K Optimized** — same renderer,
+much heavier workload. If it reaches 575 W, then a graphics load *can* hit the cap and
+the 4K result was simply light. If it still settles well below, the OpenGL path itself
+is the ceiling. After that, a real game through Proton/Vulkan is the only load that
+answers the question properly.
 
 **What this means for the undervolt.** Two directions are open, both real:
 - **More performance:** raise the frequency at 1.075 V toward the curve's 2 917 MHz.
