@@ -178,7 +178,7 @@
   | spd5118 suspend abort | suspend path only | demoted — wrong trigger |
   | PCIe Gen 5 NVMe ASPM | freeze at **idle / low load** | demoted — wrong trigger (see below) |
 
-  **Next evidence to collect** (unchanged in kind, now much better targeted): `journalctl -k -b -1 -e` after the next freeze, grepping for `Xid` — an Xid number names the failure class directly. `tools/gpu-hang-watch.sh` already exists but was written for Marvel Rivals specifically, so its watch is narrower than "any GPU-load freeze"; widen it before relying on it.
+  **Next evidence to collect** (unchanged in kind, now much better targeted): after the next freeze, `journalctl -k -b -1 | grep -iE 'xid|nvrm|gpu|hardware error'` — an Xid number names the failure class directly. **Grep, never `tail`:** UFW logs blocked multicast (router IGMP + IPv6 router-solicit) every ~2 minutes, so a plain `dmesg | tail` on this machine is ~90% firewall noise and will bury the one line that matters — observed 2026-08-04 while hunting an injected MCE. `tools/gpu-hang-watch.sh` already exists but was written for Marvel Rivals specifically, so its watch is narrower than "any GPU-load freeze"; widen it before relying on it.
 
   **⚠️ Correction, 2026-08-04.** This entry previously carried a PCIe Gen 5 NVMe/ASPM lead, described as matching "better than anything else on this list" because the forum report it came from was titled *freezes at idle / low load*. **That symptom was the forum thread's, never this machine's** — the "what was the machine doing" field was recorded right here as missing evidence, and the lead was written as though it had been answered. A candidate's own symptom is not evidence about the case it is being matched to. Retained only as a hardware note, since the matching hardware is genuinely present and it may matter later if an **idle** freeze ever does occur: `nvme2` (Samsung 9100 PRO 4TB) links at **32.0 GT/s ×4 (Gen 5)** while `nvme0`/`nvme1` (990 PRO) run Gen 4; ASPM policy is `[default]`. Sources: [initial](https://rog-forum.asus.com/t5/amd-800-series/bug-report-system-freezes-at-idle-low-load-asus-x870e-h-ryzen-9/td-p/1141620), [root cause](https://rog-forum.asus.com/t5/amd-800-series/update-x870e-h-9950x3d-idle-freeze-pcie-gen-5-nvme-root-cause/td-p/1146380).
 - **Desktop — NEXT BIOS VISIT: ordered checklist.** Already verified from Linux, do **not** change: **Resizable BAR ON** (`nvidia-smi` BAR1 = 32768 MiB ≈ full VRAM; 256 MiB would mean off), **PCIe Gen 5 × 16** at max, `iommu=pt` on the cmdline ([nvidia/rtx5090-iommu.md](nvidia/rtx5090-iommu.md)). So Above 4G Decoding / ReBAR are correct already.
@@ -310,7 +310,33 @@
 
      That third row is why both readouts are taken: the kernel decoder prints on `sw` injection independently of rasdaemon, so `dmesg` separates "the injection didn't happen" from "the collector didn't catch it". Without it, a bad status word would look exactly like a dead collector.
 
-     ⚠️ **Residual unknown:** whether the `sw` path emits the `mce_record` tracepoint rasdaemon subscribes to, or only prints. If dmesg shows the error and `ras-mc-ctl` does not, try `df` (deferred) mode before concluding rasdaemon is broken.
+     ---
+
+     ## ✅ RESULT 2026-08-04: the MCE lane is LIVE — proven, not assumed
+
+     The injection landed in both places. Kernel decoder:
+     ```
+     mce: [Hardware Error]: Machine check events logged
+     [Hardware Error]: Corrected error, no action required.
+     [Hardware Error]: CPU:0 (1a:44:0) MC0_STATUS[-|CE|-|AddrV|-|-|-|-|-|-]: 0x9400000000000135
+     ```
+     `CE` and no `PCC` — corrected, no panic, exactly as the status word was built. And `ras-mc-ctl --errors`, which had never printed anything but "No … errors", now shows:
+     ```
+     MCE events:
+     1 2026-08-04 09:36:00 +0200 error: Corrected error, no action required., CPU 2,
+       bank Unified Memory Controller V2 (bank=0), mca DRAM ECC error …
+       status=0x9400000000000135, addr=0x10000000
+     ```
+
+     **Three things this settles:**
+
+     1. **rasdaemon is collecting.** A clean `MCE events` result is now real evidence. This is the one lane the EXPO/CO validation actually rests on, and it is the only instrument in this repo that has been shown to go red on a planted defect.
+     2. **The dead EDAC lane costs nothing for memory-error detection — now measured, not inferred.** rasdaemon classified the injected error as a **DRAM ECC error** and still filed it under **`MCE events`**, while `No Memory errors.` printed unchanged directly above it. So a real DRAM ECC error arrives in the MCE table, not the Memory table. The earlier note reasoned this from the Zen MCA architecture and flagged itself as unverified; it is now demonstrated.
+     3. **`ras-mc-ctl --summary`'s uniform "No … errors" really was hiding a working lane**, not just a broken one — which is exactly why the output was worthless in both directions.
+
+     ⚠️ **The database now contains a synthetic error. Do not read it as hardware history.** The event timestamped **2026-08-04 09:36:00 +0200, bank=0, addr=0x10000000, status=0x9400000000000135** is the injected one. Any *later* MCE event is real. Superseding the 2026-08-03 "no errors in any class" baseline: **new baseline is 1 synthetic MCE, 0 real.**
+
+     Two cosmetic discrepancies, noted so they are not mistaken for findings later: rasdaemon reports `CPU 2` where the injection specified and the kernel logged `CPU:0`; and rasdaemon labels bank 0 `Unified Memory Controller V2` while the kernel decoder calls it `Load Store Unit`. The latter is because SMCA bank identity comes from `IPID`, which was left at `0` — rasdaemon maps HWID 0 to UMC. Neither affects the result; both would matter if a *real* event's bank attribution ever needed trusting, in which case set `ipid` deliberately.
 
      Until that has gone red once, treat **every** clean `ras-mc-ctl` result in this repo — including the 2026-08-03 baseline above — as *unproven*, not as evidence of health.
 
