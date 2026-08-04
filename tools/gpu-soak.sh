@@ -35,6 +35,12 @@
 #   ./tools/gpu-soak.sh --passes 40              # ~110 min
 #   sudo ./tools/gpu-soak.sh --offset 250        # apply offset, soak, restore on exit
 #   ./tools/gpu-soak.sh --asteroids 500000       # heavier scene
+#   ./tools/gpu-soak.sh --windowed --width 1280 --height 720
+#                                                # small window — keep using the machine
+#
+# NOTE ON WINDOWED RUNS: a smaller window is a LIGHTER load, so a setting that survives
+# 1280x720 windowed has NOT been proven at 2560x1440 fullscreen. Use windowed to keep
+# working; use fullscreen at native resolution for the run that decides.
 #
 # Each GravityMark pass is ~167 s, so passes x 3 min is roughly the wall-clock time.
 
@@ -46,6 +52,7 @@ ASTEROIDS=200000
 WIDTH=2560
 HEIGHT=1440
 OFFSET=""
+FULLSCREEN=1     # --windowed drops this so the machine stays usable on one monitor
 
 usage() { sed -n '2,32p' "$0"; exit "${1:-0}"; }
 
@@ -56,6 +63,7 @@ while [ $# -gt 0 ]; do
     --width) WIDTH=$2; shift 2 ;;
     --height) HEIGHT=$2; shift 2 ;;
     --offset) OFFSET=$2; shift 2 ;;
+    --windowed) FULLSCREEN=0; shift ;;
     -h|--help) usage 0 ;;
     *) echo "unknown option: $1" >&2; usage 1 ;;
   esac
@@ -102,7 +110,7 @@ START_MARK=$(date '+%Y-%m-%d %H:%M:%S')
 
 say "=== GPU stability soak — gaming clocks, unattended ==="
 say "passes:    $PASSES  (~$(( PASSES * 167 / 60 )) min)"
-say "scene:     ${WIDTH}x${HEIGHT}, ${ASTEROIDS} asteroids, Vulkan RT"
+say "scene:     ${WIDTH}x${HEIGHT}, ${ASTEROIDS} asteroids, Vulkan RT$([ "$FULLSCREEN" = 0 ] && echo ' (WINDOWED — lighter load than fullscreen)')"
 say "offset:    ${OFFSET:-<current, unchanged>}"
 say "output:    $OUT"
 say ""
@@ -125,11 +133,15 @@ say ""
 
 # -count N runs N benchmark passes back to back; -close 1 exits when done.
 # -times logs per-frame timings, so a stutter/hitch is recoverable after the fact.
-"$GM" -vk -raytracing 1 -temporal 1 -fullscreen 1 -screen 0 \
+# MUST run from bin/ — the vendor's own run_*.sh scripts cd there first, because
+# libTellusim_x64.so sits beside the binary and is found via an empty rpath. Invoking
+# it by absolute path from anywhere else dies with "cannot open shared object file"
+# and exit 127, which is a LAUNCH failure and must never be read as instability.
+( cd "$(dirname "$GM")" && ./"$(basename "$GM")" \
+      -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen 0 \
       -benchmark 1 -count "$PASSES" -close 1 \
       -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT" \
-      -times "$OUT/frametimes.txt" \
-      >"$OUT/gravitymark.log" 2>&1
+      -times "$OUT/frametimes.txt" ) >"$OUT/gravitymark.log" 2>&1
 GM_RC=$?
 
 kill "$SPID" 2>/dev/null
@@ -162,6 +174,24 @@ if [ -n "$SCORES" ]; then
   say "  (spread is your run-to-run variance — an offset gain smaller than this is noise)"
 fi
 say ""
+
+# DID THE TEST EVEN RUN? A benchmark that never started is not an unstable GPU. Getting
+# this wrong once already produced "the machine is unstable at factory settings" from a
+# missing shared library — a false alarm that would train anyone to discount a real one.
+# Exit 127 = command/library not found; a log with a loader error; or zero passes AND
+# zero Xid AND zero device-lost, which is the signature of "nothing happened".
+if [ "$GM_RC" -eq 127 ] \
+   || grep -qi 'error while loading shared libraries\|command not found' "$OUT/gravitymark.log" 2>/dev/null \
+   || { [ "$NRUNS" -eq 0 ] && [ "$XID" -eq 0 ] && [ "$DEVLOST" -eq 0 ]; }; then
+  say "⚠️ INCONCLUSIVE — the benchmark never ran. This says NOTHING about stability."
+  say ""
+  say "   GravityMark exit $GM_RC, $NRUNS passes, no Xid, no device-lost."
+  say "   First lines of its output:"
+  head -3 "$OUT/gravitymark.log" 2>/dev/null | sed 's/^/     /' | tee -a "$LOG"
+  say ""
+  say "   Fix the launch problem and re-run. Nothing about the GPU is in question here."
+  exit 2
+fi
 
 if [ "$XID" -gt 0 ] || [ "$DEVLOST" -gt 0 ] || [ "$NRUNS" -lt "$PASSES" ]; then
   say "❌ FAILED — unstable at this setting."
