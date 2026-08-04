@@ -352,10 +352,41 @@ headroom sitting there; the run simply measured a clamped state end to end.
    rather than effective die voltage, in which case the "real" voltage is lower and the
    curve is being honoured after all — no anomaly.
 
-**The measurement that separates them is one we already need: a load that does not hit
-575 W.** If at ~450 W the card sits near its curve value, explanation 1 holds and the
-undervolt payoff under power-limited load is large. Superposition or a real game, via
-`sudo ./tools/gpu-thermal.sh gaming -l "<benchmark>"`.
+### ✅ RESOLVED 2026-08-04 — explanation 1. The limiter was clamping.
+
+Unigine Superposition, **4K Optimized**, OpenGL 4.4, 85 loaded samples:
+
+| | `gpu_burn` (power virus) | **Superposition 4K** |
+|---|---|---|
+| power | **575 W — capped** | **493 W mean / 514 W max — NOT capped** |
+| SM clock | ~2 125 MHz | **2 665 MHz mean / 2 707 max** |
+| GPU utilisation | 100 % | 100 % |
+| NVVDD | 0.995–1.075 V | **1.075 V, all 85 samples** |
+| clock at 1.075 V | 2 224 MHz | **2 665 MHz** |
+| **deficit vs curve** (2 917 MHz @ 1 075 mV) | **693 MHz / 23.8 %** | **252 MHz / 8.6 %** |
+
+**The deficit shrinks by two-thirds the moment the power cap stops binding.** That is
+explanation 1 confirmed: the limiter clamps *frequency* while voltage holds at the
+requested curve point. Explanation 2 (load-line compensation inflating the reading)
+would have produced a constant offset regardless of power state; it did not.
+
+**A residual 252 MHz gap remains at 493 W**, unexplained — the card is not power-capped
+there, yet still sits below its curve value. Candidates not distinguished: the curve's
+frequency being a best-case bin rather than a sustained guarantee, current-droop at
+heavy real load, or a reliability guard. **Unverified.**
+
+**The card never exceeded 1.075 V in either run**, though the curve extends to 1 240 mV.
+So at realistic gaming load this card is **voltage-ceiling limited, not power limited** —
+which is precisely the regime a curve edit addresses.
+
+**What this means for the undervolt.** Two directions are open, both real:
+- **More performance:** raise the frequency at 1.075 V toward the curve's 2 917 MHz.
+  The card has ~80 W of unused power budget (493 of 575 W) to pay for it.
+- **Less heat and noise:** get today's 2 665 MHz at ~1.00 V instead, cutting power at
+  the same performance.
+
+Not the "huge payoff" the power-limited case would have implied — the card is not
+starved for power at gaming load — but a genuine, measurable win in either direction.
 
 ## Open: case fans are driven by CPU temperature only
 
