@@ -148,14 +148,25 @@ snap_to() {
 
 run_rung() {   # $1 = label
   printf '%s\tSTARTED\t\t%s\n' "$1" "$(date -Is)" >> "$STATE"; sync
-  "$SOAK" --passes "$PASSES" --screen "$SCREEN" $WINDOWED >/dev/null 2>&1
-  local rc=$?
+  local out rc
+  # Capture the soak's own output directory rather than matching it by timestamp later.
+  # Timestamp matching is guesswork that breaks whenever two runs land in the same second.
+  out=$("$SOAK" --passes "$PASSES" --screen "$SCREEN" $WINDOWED 2>&1 | tee -a "${STATE%.tsv}.soaks.log" | awk '/^output:/{print $2}')
+  rc=${PIPESTATUS[0]}
   case "$rc" in
-    0) printf '%s\tFINISHED\tPASS\t%s\n' "$1" "$(date -Is)" >> "$STATE" ;;
-    2) printf '%s\tFINISHED\tINCONCLUSIVE\t%s\n' "$1" "$(date -Is)" >> "$STATE" ;;
-    *) printf '%s\tFINISHED\tFAIL\t%s\n' "$1" "$(date -Is)" >> "$STATE" ;;
+    0) printf '%s\tFINISHED\tPASS\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    2) printf '%s\tFINISHED\tINCONCLUSIVE\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    *) printf '%s\tFINISHED\tFAIL\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
   esac
   sync; return $rc
+}
+
+# Mean delivered clock for a recorded rung, from the soak dir the state file names.
+clock_of() {
+  local d
+  d=$(awk -F'\t' -v l="$1" '$1==l && $2=="FINISHED"{print $5}' "$STATE" | tail -1)
+  [ -n "$d" ] && [ -f "$d/sensors.txt" ] || { echo 0; return; }
+  awk '$3!="n/a" && $3+0>100 {n++; f+=$2} END{printf "%d", (n? f/n : 0)}' "$d/sensors.txt"
 }
 
 # ── baseline ────────────────────────────────────────────────────────────────────────
@@ -167,6 +178,12 @@ else
   "$NVCURVE" write --reset >/dev/null 2>&1
   run_rung "stock" || { say "baseline FAILED — unstable at stock. Stop and investigate."; exit 1; }
   say "  ✓ baseline recorded"
+fi
+STOCK_CLK=$(clock_of stock)
+if [ "${STOCK_CLK:-0}" -gt 0 ]; then
+  say "  stock delivers ${STOCK_CLK} MHz — the crossover the sweep stops at"
+else
+  say "  ⚠️ could not read the stock clock; the crossover stop rule is DISABLED"
 fi
 
 CLOCK_LIST=$(echo "$CLOCKS" | tr ' ' '\n' | sort -n | tr '\n' ' ')
@@ -251,6 +268,26 @@ for mv in $ANCHORS; do
     say "  Ending the sweep; lower anchors can only be worse."
     break
   fi
+  # ── STOP RULE, grounded in the goal rather than a threshold ───────────────────────
+  # Above the stock baseline clock, a lower anchor is FREE power — strictly better, keep
+  # going. Below it you have started trading performance for watts, which is not the
+  # stated goal. The crossover is the decision point, and the 1% tolerance is the
+  # measured run-to-run variance (0.3% spread), not a guess.
+  DELIVERED=$(clock_of "${mv}mV/${BEST_AT_ANCHOR}")
+  if [ "${STOCK_CLK:-0}" -gt 0 ] && [ "$DELIVERED" -gt 0 ]; then
+    THRESH=$(( STOCK_CLK * 99 / 100 ))
+    say "  delivered ${DELIVERED} MHz vs stock ${STOCK_CLK} MHz (floor ${THRESH})"
+    if [ "$DELIVERED" -lt "$THRESH" ]; then
+      say ""
+      say "  ► STOPPING: ${mv} mV delivers ${DELIVERED} MHz, below the stock baseline."
+      say "    Lower anchors can only be slower. Past this point every further step"
+      say "    trades performance for watts, which is not the goal — so the sweep ends"
+      say "    here rather than spending hours mapping trades you would not take."
+      CEILING=$BEST_AT_ANCHOR
+      break
+    fi
+  fi
+
   CEILING=$BEST_AT_ANCHOR
   B=$(base_at "$mv")
   if [ "${B:-0}" -gt 0 ]; then
