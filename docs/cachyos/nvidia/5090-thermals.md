@@ -674,6 +674,89 @@ the behaviour of underperforming hardware.
 Not the "huge payoff" the power-limited case would have implied — the card is not
 starved for power at gaming load — but a genuine, measurable win in either direction.
 
+## ✅ RESULT: the undervolt ladder, and the setting to use (2026-08-04)
+
+Walked with `tools/gpu-uv-explore.sh`; each rung a 4-pass `gpu-soak.sh` run
+(GravityMark RT, 2560×1440, 200 k asteroids). Stock control measured **in the same
+session**, not carried from earlier.
+
+| rung | score | vs stock | reported MHz | watts | vs stock | verdict |
+|---|---|---|---|---|---|---|
+| stock | 76 896 | — | 2 811 | 352 | — | control |
+| 1000 mV / 2800 | 77 137 | +0.3 % | 2 749 | 342 | −2.8 % | pass |
+| 1000 mV / 2900 | 79 560 | +3.5 % | 2 743 | 327 | −7.1 % | pass |
+| **1000 mV / 3000** | **82 329** | **+7.1 %** | 2 802 | **333** | **−5.4 %** | **pass — chosen** |
+| 950 mV / 3000 | 82 400 | +7.2 % | 2 781 | 316 | −10.2 % | pass |
+| 1000 mV / 3100 | 79 778 | +3.7 % | 2 881 | 327 | −7.1 % | stable but **slower** |
+| 950 mV / 3100 | — | — | — | — | — | 💥 **hard lock** |
+
+**Both goals were achievable at once.** The chosen setting is faster *and* cooler than
+stock: +7.1 % score for −5.4 % power. The "more performance vs less heat" tradeoff the
+early analysis assumed turned out not to bind — flattening buys both, because stock was
+spending voltage it did not need.
+
+### Why 1000 mV / 3000 rather than 950 mV / 3000
+
+Their scores are **statistically identical** (+0.1 %, against 2.4 % run-to-run spread),
+so the 17 W is the only real difference — and it is bought with **stability margin**:
+
+- At **950 mV**, the next rung up (3100) **hard-locked the whole machine.** 950/3000 sits
+  directly beneath a hard failure.
+- At **1000 mV**, the next rung up (3100) **completed four clean passes.** 1000/3000 has a
+  proven-stable rung above it.
+
+The standing rule is to settle one rung below the highest that passed. Only 1000/3000
+satisfies it. 950 mV remains available if the 17 W ever matters more than the margin.
+
+### ⚠️ Clock stretching: "it passed the soak" ≠ "it is better"
+
+**1000 mV / 3100 is stable and slower.** Four passes, zero Xid, zero device-lost — and
+3.1 % less score than the rung below it. The card reported a *higher* clock while
+delivering *less* work:
+
+| | 1000 mV/3000 | 1000 mV/3100 | |
+|---|---|---|---|
+| reported clock | 2 802 MHz | 2 881 MHz | **+2.8 %** |
+| power | 333 W | 327 W | **−1.8 %** ← should have RISEN |
+| FPS | 494.0 | 483.3 | −2.2 % |
+| score | 82 329 | 79 778 | −3.1 % |
+
+Power tracks f·V². With the voltage ceiling unchanged, a genuine +2.8 % clock must draw
+more power. It drew **less** — so the effective clock is below the reported one. When the
+requested clock exceeds what the voltage sustains, the GPU **stretches the clock
+internally while `nvidia-smi` keeps reporting the requested value**. No crash, no Xid, no
+visual artifact, just quietly less performance.
+
+**Consequence for the method:** a stability soak cannot find the optimum on its own. The
+useful ceiling is set by *score*, and it arrives **before** the crash — here a full 100 MHz
+before it, at 1000 mV. Any rung must be judged on delivered score; reported clock is not
+evidence, and at the top of the curve it actively lies.
+
+**Ruled out as causes of the drop — measured, not assumed. Do not re-investigate:**
+
+| Candidate | Why it is not the cause |
+|---|---|
+| vsync / refresh rate | run measured **483 FPS** against a 60 Hz panel — the cap never binds |
+| display rearranged after the reboot | both panels 2560×1440; GravityMark logged the same rendered resolution in both runs |
+| **operator alt-tabbed out repeatedly during the 3100 run** | no signature in the sensor series: **220 of 224 loaded samples in both runs**, utilization never below 91 % (mean **93.8 %** vs 93.5 % clean — slightly *higher*), and the only power dips are the four 1-sample pass boundaries present in both. A fullscreen benchmark on a secondary screen is never unmapped by the compositor, so it kept rendering at full rate. Residual compositor steal is bounded by that same 0.3-point utilization delta — **~0.3 % at most, against a 3.1 % loss** |
+
+Method note worth keeping: **utilization + loaded-sample count is the cheap test for whether
+a soak was disturbed.** An interrupted run shows a low-utilization tail; this one does not.
+
+### Apply it
+
+```sh
+sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000     # apply
+sudo ./tools/gpu-flatten.sh --reset                  # back to stock
+```
+
+**Not persistent — a reboot returns the card to stock.** No systemd unit is installed yet;
+until one is, this is a per-boot command.
+
+⚠️ **Validated against one fixed scene only.** GravityMark RT exercises a single shader
+mix; a real game varies shaders, resolution and load in ways this does not. The 12-pass
+confirmation run is still outstanding (the 950/3100 lock cut the session short).
+
 ## Open: case fans are driven by CPU temperature only
 
 Under a GPU-only load the CPU stays idle, so a CPU-temperature fan curve has no

@@ -464,29 +464,80 @@ done
 # Screening rungs are deliberately short — instability at the edge is probabilistic, so
 # a short pass is a SCREEN, not proof. The pair that survives screening earns one long
 # soak before it is recommended.
-# Pick the best passing pair by the actual criterion: highest target clock wins, and at
-# equal clock the LOWER anchor wins (same speed, less voltage). `tail -1` previously took
-# whatever was recorded last — the lowest anchor's result, typically the slowest setting.
-WIN=$(awk -F'\t' '$2=="FINISHED" && $3=="PASS" && $1!="stock" && $1 !~ /confirm/ {print $1}' "$STATE" \
-      | awk -F'mV/' '{print $2"\t"$1}' | sort -k1,1nr -k2,2n | head -1 \
-      | awk -F'\t' '{print $2"mV/"$1}')
+# Pick the winner by MEASURED SCORE, not by target clock.
+#
+# WHY NOT CLOCK. A rung that passes is not thereby faster. Measured 2026-08-04:
+# 1000mV/3100 passed 4 clean passes (0 Xid) and scored 79 778 against 1000mV/3000's
+# 82 329 — 3.1% SLOWER while REPORTING a 2.8% higher clock, at 1.8% LESS power. Power
+# tracks f·V²; with the voltage ceiling unchanged a real clock rise must cost power. It
+# did not, so the effective clock was below the reported one: the GPU stretches the clock
+# internally when the requested value exceeds what the voltage sustains, and nvidia-smi
+# keeps echoing what was asked for. Selecting on target clock picks exactly that rung.
+# Score is the only field that measures delivered work, so score decides. Ties go to the
+# LOWER anchor — same speed for less voltage; at equal anchor the HIGHER clock, which
+# costs nothing in the coasting regime and clocks up inside the cap in the capped one.
+#
+# MARGIN IS APPLIED BEFORE THE CHOICE, NOT AFTER. Ranking first and backing off the
+# winner afterwards compares candidates that have not had the same rule applied, and the
+# back-off can demote the winner below a rival it had just beaten. On the 2026-08-04 data
+# that is not hypothetical: score-ranking picks 950mV/3000 (82 400), whose anchor ceiling
+# IS 3000 — 950mV/3100 hard-locked the machine — so it backs off to an untested
+# 950mV/2900, while 1000mV/3000 (82 329, a 0.1% difference against 2.4% run-to-run
+# spread) needs no back-off at all because 1000mV/3100 passed above it. Deciding on the
+# post-margin setting picks 1000mV/3000, which is the right answer.
+#
+#   stability ceiling(anchor) = highest clock that PASSED at that anchor
+#   a rung is COVERED when its clock is below its anchor's ceiling — a higher rung
+#   already passed, so the margin is demonstrated rather than assumed
+#
+# Covered rungs are preferred outright: their score is measured AND their margin is
+# proven. Only if nothing is covered does the old back-off-from-the-top rule apply, and
+# then the setting confirmed is one rung down from the best — untested by definition,
+# which is exactly why it is the fallback and not the default.
+RUNGS=$(while IFS= read -r r; do
+          [ -n "$r" ] || continue
+          printf '%s\t%s\t%s\n' "$(score_of "$r")" "${r%%mV/*}" "${r##*/}"
+        done < <(awk -F'\t' '$2=="FINISHED" && $3=="PASS" && $1!="stock" && $1 !~ /confirm/ {print $1}' "$STATE" | sort -u) \
+        | awk -F'\t' '$1>0')
+CEILS=$(awk -F'\t' '$2=="FINISHED" && $3=="PASS" && $1!="stock" && $1 !~ /confirm/ {
+          split($1,p,"mV/"); if(p[2]+0>m[p[1]]) m[p[1]]=p[2]+0 } END{for(a in m) print a"\t"m[a]}' "$STATE")
 
-# Confirm the setting that will actually be USED — one rung below the maximum, per the
-# back-off rule — not the maximum itself. Confirming a setting you intend to abandon
-# proves nothing about the one you will run.
+COVERED=$(echo "$RUNGS" | awk -F'\t' -v C="$CEILS" '
+  BEGIN{ n=split(C,L,"\n"); for(i=1;i<=n;i++){ split(L[i],f,"\t"); ceil[f[1]]=f[2]+0 } }
+  $3+0 < ceil[$2] { print }' | sort -k1,1nr -k2,2n -k3,3nr | head -1)
+BEST=$(echo "$RUNGS" | sort -k1,1nr -k2,2n -k3,3nr | head -1)
+
+if [ -n "$COVERED" ]; then WIN_ROW=$COVERED; COVERED_WIN=1; else WIN_ROW=$BEST; COVERED_WIN=""; fi
+WIN=$(echo "$WIN_ROW" | awk -F'\t' '{print $2"mV/"$3}')
+
 if [ -n "$WIN" ]; then
   wmv=${WIN%%mV/*}; wmax=${WIN##*/}
-  wmhz=$(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk -v m="$wmax" '$1<m{p=$1} END{print p+0}')
-  [ "${wmhz:-0}" -gt 0 ] || wmhz=$wmax     # nothing below it — confirm the max itself
+  CEIL_AT=$(echo "$CEILS" | awk -F'\t' -v a="$wmv" '$1==a{print $2+0}')
   say ""
   say "───────────────────────────────────────────────"
-  say "Best passing pair: ${wmv} mV / ${wmax} MHz"
-  if [ "$wmhz" != "$wmax" ]; then
-    say "Confirming ONE RUNG BELOW it — ${wmv} mV / ${wmhz} MHz — because that is the"
-    say "setting the back-off rule says to run. Margin covers a warm day, a driver"
-    say "update, and aging; instability at the edge is probabilistic."
+  if [ -n "$COVERED_WIN" ]; then
+    wmhz=$wmax
+    say "Best setting by MEASURED SCORE, margin included: ${wmv} mV / ${wmax} MHz  ($(score_of "$WIN") points)"
+    say "Its anchor's stability ceiling is ${CEIL_AT} MHz — a HIGHER rung already passed,"
+    say "so ${wmax} MHz has demonstrated margin above it. Confirming it as-is; backing off"
+    say "further would discard the win for margin that is already proven."
+    bs=$(echo "$BEST" | cut -f1)
+    if [ "$bs" -gt "$(score_of "$WIN")" ]; then
+      say "  (a higher raw score exists — $(echo "$BEST" | awk -F'\t' '{print $2"mV/"$3}') at ${bs} — but nothing above it is"
+      say "   proven stable, so it would have to back off to an untested rung.)"
+    fi
   else
-    say "No rung below it in the tested set — confirming the maximum itself."
+    say "Best passing pair by SCORE: ${wmv} mV / ${wmax} MHz  ($(score_of "$WIN") points)"
+    wmhz=$(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk -v m="$wmax" '$1<m{p=$1} END{print p+0}')
+    [ "${wmhz:-0}" -gt 0 ] || wmhz=$wmax   # nothing below it — confirm the max itself
+    if [ "$wmhz" != "$wmax" ]; then
+      say "NO rung anywhere has a proven-stable rung above it, so nothing carries measured"
+      say "margin. Falling back to the back-off rule: confirming ${wmv} mV / ${wmhz} MHz,"
+      say "one rung below the best. Margin covers a warm day, a driver update, and aging;"
+      say "instability at the edge is probabilistic."
+    else
+      say "No rung below it in the tested set — confirming the maximum itself."
+    fi
   fi
   if [ "$CONFIRM" -gt "$PASSES" ]; then
     say "CONFIRMING ${wmv} mV / ${wmhz} MHz with $CONFIRM passes   ($(date +%H:%M:%S))"

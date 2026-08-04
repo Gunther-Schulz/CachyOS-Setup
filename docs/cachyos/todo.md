@@ -187,7 +187,32 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
-- **Desktop — READY: GPU undervolt, READ-ONLY investigation phase first (operator decision 2026-08-04: "no setting any other voltage right now, prepare with non-destructive reading investigation").**
+- **Desktop — ✅ LARGELY DONE (2026-08-04): GPU undervolt. Setting chosen: `1000 mV / 3000 MHz` flatten — +7.1 % score for −5.4 % power vs stock.** Full ladder table, the 950 mV-vs-1000 mV margin argument, and the clock-stretching finding: [nvidia/5090-thermals.md](nvidia/5090-thermals.md) → *"RESULT: the undervolt ladder"*.
+
+  ```fish
+  sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000   # apply (NOT persistent across reboot)
+  ```
+
+  **Key finding that changes the method — a soak cannot find the optimum.** `1000mV/3100`
+  passed 4 clean passes (0 Xid, 0 device-lost) and was **3.1 % SLOWER** than 3000. The card
+  reported +2.8 % clock while drawing −1.8 % power and delivering −2.2 % FPS: power tracks
+  f·V², so a real clock rise must cost power — it didn't, meaning the effective clock is
+  below the reported one (**clock stretching**; `nvidia-smi` keeps echoing the requested
+  value). **The useful ceiling is set by score and arrives ~100 MHz before the crash.**
+  Judge rungs on delivered score; reported clock is not evidence and lies at the top of the
+  curve.
+
+  **Remaining (ready):**
+  1. **12-pass confirmation** of `1000mV/3000` — the `950mV/3100` hard lock cut the session short.
+     `sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000; and sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
+  2. **Persistence** — save as an nvcurve profile, then a systemd unit. Nothing survives a reboot today.
+  3. **Validate in a real game** — one fixed GravityMark scene is one shader mix, not a workload.
+
+  ---
+
+  <details><summary>Original item — READ-ONLY investigation phase (2026-08-04, now superseded)</summary>
+
+  **Desktop — READY: GPU undervolt, READ-ONLY investigation phase first (operator decision 2026-08-04: "no setting any other voltage right now, prepare with non-destructive reading investigation").**
 
   Tool: **[`ekojsalim/nvcurve`](https://github.com/ekojsalim/nvcurve)** — per-point V/F curve editing via undocumented NvAPI, tested on RTX 5090/Blackwell. Why this and not `nvidia-settings` offsets: mechanism, safety analysis and the retraction of "no V/F editor exists on Linux" are in [nvidia/5090-thermals.md](nvidia/5090-thermals.md).
 
@@ -292,6 +317,7 @@
   | [`gpu-clock-ladder.sh`](../../tools/gpu-clock-ladder.sh) | superseded — one axis (clock) at a fixed anchor |
   | [`gpu-flatten-ladder.sh`](../../tools/gpu-flatten-ladder.sh) | superseded — one axis (anchor) with clock frozen at stock |
   | [`gpu-uv-ladder.sh`](../../tools/gpu-uv-ladder.sh) | superseded — global-offset path, limited by the top of the curve |
+  | [`test-gpu-uv-selection.sh`](../../tools/test-gpu-uv-selection.sh) | **regression test for winner selection** — no root, no hardware, ~1 s. Run it after touching `gpu-uv-explore.sh` |
 
   ```fish
   sudo ./tools/gpu-uv-explore.sh --screen 1     # start / Ctrl-C is a safe pause
@@ -306,7 +332,7 @@
 
   | # | Bug | Effect | Severity |
   |---|---|---|---|
-  | 1 | **`run_rung` records Ctrl-C as `FAIL`** ([`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh)) | a cancelled rung becomes a permanent false wall — the anchor is treated as bounded and that clock is never retested. Observed 2026-08-04: `1000mV/3100` marked FAIL after **158 s** of a ~670 s rung, with **0 passes, 0 device-lost, 0 Xid** | **corrupts results** |
+  | 1 | **`run_rung` records Ctrl-C as `FAIL`** ([`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh)) | a cancelled rung becomes a permanent false wall — the anchor is treated as bounded and that clock is never retested. Observed 2026-08-04: `1000mV/3100` marked FAIL after **158 s** of a ~670 s rung, with **0 passes, 0 device-lost, 0 Xid**. **The retest proved the FAIL false — it passes 4/4 clean.** | **corrupts results** |
   | 2 | `--status` demands root | the root check sits at line ~65, above the status branch at ~90, though `--status` only reads files | annoyance — workaround below |
   | 3 | "benchmark runs as g (root has the wrong HOME and no display access)" | reads as a warning; it is a confirmation that the privilege drop worked | cosmetic |
 
@@ -322,6 +348,28 @@
   ⚠️ **A commit message on 2026-08-04 claimed #2 was fixed. It was not** — the status
   branch was moved during a rewrite and the root check was left above it. Recorded
   because an unverified fix claim is worse than an open bug: it stops anyone looking.
+
+  ### ✅ Fixed 2026-08-04 — winner selection, now covered by a test
+
+  Three bugs in the same block, none of which crashed: the sweep completed and printed a
+  confident recommendation that was the wrong setting.
+
+  | Bug | Would have picked | Correct |
+  |---|---|---|
+  | `tail -1` took whatever was recorded last | the slowest rung | — |
+  | ranked by **target clock** | `1000mV/3100` — **stable but 3.1 % slower** (clock stretching) | `1000mV/3000` |
+  | back-off applied **after** ranking | `950mV/2900` (untested) — demoted the winner below a rival it had beaten | `1000mV/3000` |
+
+  The rule now: **rank by measured score**, and apply margin *before* choosing — a rung is
+  preferred when a higher rung at the same anchor already passed, because that margin is
+  demonstrated rather than assumed. Backing off one rung is the fallback for when nothing
+  is covered, not the default.
+
+  [`tools/test-gpu-uv-selection.sh`](../../tools/test-gpu-uv-selection.sh) pins all five
+  cases against fixtures — no root, no GPU, ~1 s. It extracts the selection block from the
+  live script rather than restating it, so it cannot pass while the script drifts. It
+  caught a fourth bug during its own construction (equal scores resolved arbitrarily
+  because there was no tie-break on clock).
 
   **Granularity is a resolution choice, refinable after the fact.** The default grid is
   50 mV × 100 MHz, so a true optimum at e.g. 970 mV / 2 950 MHz would never be tested.
@@ -467,6 +515,8 @@
   **Persist only after a step survives all three synthetic tests AND a real gaming session**, and record which offset was proven before installing the service.
 
   **Later refinement:** the global offset is the blunt instrument. The precise undervolt — pick a voltage point, raise its frequency, flatten the points above so the card never exceeds that voltage — needs the web UI's flatten tool, and preserves idle behaviour by leaving the low points untouched. Worth doing once these steps have established how much headroom the silicon has.
+
+  </details>
 
 - **Desktop — READY: tie case fans to GPU temperature as well as CPU (operator wants to explore this, 2026-08-04).**
 
