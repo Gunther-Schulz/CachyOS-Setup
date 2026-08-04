@@ -264,12 +264,20 @@
     | sudo tee -a ~/bench/explore-state.tsv
 
   # check the ladder before committing 3-4 h — writes nothing to the GPU
-  sudo ./tools/gpu-uv-explore.sh --resume --dry-run \
+  sudo ./tools/gpu-uv-explore.sh --resume --state ~/bench/explore-state.tsv --dry-run \
     --anchors "925 900 890" --clocks "2500 2600 2700 2800 2900 3000"
 
-  sudo ./tools/gpu-uv-explore.sh --resume --screen 1 \
+  sudo ./tools/gpu-uv-explore.sh --resume --state ~/bench/explore-state.tsv --screen 1 \
     --anchors "925 900 890" --clocks "2500 2600 2700 2800 2900 3000"
   ```
+
+  Expect the finale's **score verdict to be WITHHELD**: the file's stock rung (76 896)
+  is the depressed afternoon baseline — the same rung re-measured 82 244 that evening —
+  and the report now refuses to rank against a reference the clocks contradict. That is
+  correct behaviour, not a failure. The resumed sweep's real deliverables are the
+  **PASS/FAIL frontier** (which anchors hold which clocks) and **power**, which
+  reproduced across all sessions; score's only load-bearing job is stretch detection,
+  which is within-session and unaffected.
 
   925 mV is in the list deliberately: it is the untested gap between the proven 950 and
   the target 890, and each rung it passes raises the ratchet that gates the next anchor.
@@ -422,20 +430,14 @@
   stock-vs-setting is interleaved per `gpu-ab-compare.sh` discipline, verdict on delivered
   throughput with a confidence interval — never on reported clock.
 
-  **Tooling — READY, both surfaced 2026-08-04 while repairing a resume by hand:**
-
-  - **`gpu-uv-explore.sh` needs a `--state <file>` flag.** `--resume` takes the newest
-    `explore-*.tsv` without a `SWEEP COMPLETE` line, so a short later run outranks the long
-    sweep holding the real history — observed restoring a `+263` proven delta where the
-    full ladder gives `+428`, which starts every lower anchor too low. Worked around twice
-    by hand-editing state, which is the signal it belongs in the tool. *Done when:* the
-    flag selects the file, `--resume` without it keeps today's behaviour, and a test case
-    proves the predictor rebuilds from the named file and not the newest one.
-  - **Aborting a run writes `SWEEP COMPLETE`**, so the next `--resume` says *"no unfinished
-    run to resume"* and the operator must hand-delete the line. A Ctrl-C is not a completed
-    sweep. *Done when:* the terminator distinguishes finished from aborted (or is written
-    only on the normal exit path) and `--resume` picks up an aborted run untouched. Note
-    the trap also fires on the normal path — check which before changing it.
+  **Tooling — ✅ CLOSED, commit `fb5b76e` (2026-08-05).** Both defects fired for real on
+  the aborted 2026-08-04 evening run before the fix landed: `--resume` now refuses when
+  several unfinished runs exist and `--state <file>` names the one meant; Ctrl-C records
+  the in-flight rung `INTERRUPTED` and stops **without** writing `SWEEP COMPLETE`. Same
+  commit: `gpu-ladder-report.sh` carries measured noise bars and withholds the verdict
+  when a rung's score gain exceeds its clock gain (the "+7.1 % WINS BOTH" class — run it
+  against `explore-state.tsv` and it now refuses its own old output). Ten test cases,
+  each shown red against the old implementation first.
 
   **Remaining (ready), in order:**
   1. **Finish the ladder at 900 and 875 mV** (above) — the open half of the sweep.
@@ -617,8 +619,9 @@
   | [`test-gpu-uv-selection.sh`](../../tools/test-gpu-uv-selection.sh) | **regression test for winner selection** — no root, no hardware, ~1 s. Run it after touching `gpu-uv-explore.sh` |
 
   ```fish
-  sudo ./tools/gpu-uv-explore.sh --screen 1     # start / Ctrl-C is a safe pause
-  sudo ./tools/gpu-uv-explore.sh --resume       # continue, re-running nothing decided
+  sudo ./tools/gpu-uv-explore.sh --screen 1     # start / Ctrl-C stops, run stays resumable
+  sudo ./tools/gpu-uv-explore.sh --resume       # continue; refuses if several candidates
+  sudo ./tools/gpu-uv-explore.sh --resume --state ~/bench/explore-state.tsv  # name the file
   ./tools/gpu-ladder-report.sh --state ~/bench/explore-state.tsv   # progress, no root
   ```
 
@@ -629,22 +632,12 @@
 
   | # | Bug | Effect | Severity |
   |---|---|---|---|
-  | 1 | **`run_rung` records Ctrl-C as `FAIL`** ([`gpu-uv-explore.sh`](../../tools/gpu-uv-explore.sh)) | a cancelled rung becomes a permanent false wall — the anchor is treated as bounded and that clock is never retested. Observed 2026-08-04: `1000mV/3100` marked FAIL after **158 s** of a ~670 s rung, with **0 passes, 0 device-lost, 0 Xid**. **The retest proved the FAIL false — it passes 4/4 clean.** | **corrupts results** |
-  | 2 | `--status` demands root | the root check sits at line ~65, above the status branch at ~90, though `--status` only reads files | annoyance — workaround below |
-  | 3 | "benchmark runs as g (root has the wrong HOME and no display access)" | reads as a warning; it is a confirmation that the privilege drop worked | cosmetic |
+  | 1 | "benchmark runs as g (root has the wrong HOME and no display access)" | reads as a warning; it is a confirmation that the privilege drop worked | cosmetic |
 
-  **Fix for #1:** a soak killed by a signal returns 130/143 — record `INTERRUPTED`, not
-  `FAIL`, and have `--resume` treat it as unproven and re-run it, exactly as it already
-  does for a rung that started and never finished.
-
-  **Workaround for #2** — the report needs no root and reads any state file:
-  ```fish
-  ./tools/gpu-ladder-report.sh --state ~/bench/explore-latest.tsv
-  ```
-
-  ⚠️ **A commit message on 2026-08-04 claimed #2 was fixed. It was not** — the status
-  branch was moved during a rewrite and the root check was left above it. Recorded
-  because an unverified fix claim is worse than an open bug: it stops anyone looking.
+  ✅ Fixed and verified by execution 2026-08-05: Ctrl-C now records `INTERRUPTED` (never
+  `FAIL`) **and stops the run** (`fb5b76e`, tested); `--status` runs without root
+  (executed: rc 0 as user `g` — the earlier fix claim that was recorded here as
+  unverified is now verified).
 
   ### ✅ Fixed 2026-08-04 — winner selection, now covered by a test
 

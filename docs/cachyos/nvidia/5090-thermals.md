@@ -757,15 +757,20 @@ session**, not carried from earlier.
 | rung | score | vs stock | reported MHz | watts | vs stock | verdict |
 |---|---|---|---|---|---|---|
 | stock | 76 896 † | — | 2 811 | 352 | — | control |
-| 1000 mV / 2800 | 77 137 | +0.3 % | 2 749 | 342 | −2.8 % | pass |
-| 1000 mV / 2900 | 79 560 | +3.5 % | 2 743 | 327 | −7.1 % | pass |
+| 1000 mV / 2800 | 77 137 | † | 2 749 | 342 | −2.8 % | pass |
+| 1000 mV / 2900 | 79 560 | † | 2 743 | 327 | −7.1 % | pass |
 | **1000 mV / 3000** | 82 329 † | — | 2 802 | **333** | **−5.4 %** | **pass — chosen** |
-| 950 mV / 3000 | 82 400 | +7.2 % | 2 781 | 316 | −10.2 % | pass |
-| 1000 mV / 3100 | 79 778 | +3.7 % | 2 881 | 327 | −7.1 % | stable but **slower** |
+| 950 mV / 3000 | 82 400 | † | 2 781 | 316 | −10.2 % | pass |
+| 1000 mV / 3100 | 79 778 | † | 2 881 | 327 | −7.1 % | stable but **slower** |
 | 950 mV / 3100 | — | — | — | — | — | 💥 **hard lock** |
 
 † **Score columns are block measurements and are NOT comparable across rungs** — see the
-retraction above. The power column is; it reproduced across three sessions.
+retraction above. The power column is; it reproduced across three sessions. This table
+originally printed vs-stock score deltas up to "+7.2 %"; the same stock rung re-measured
+82 244 the same evening (7 % above this run's 76 896), which is what killed them. The
+check is now mechanical: `gpu-ladder-report.sh` flags a rung whose score gain exceeds
+its clock gain as IMPLAUSIBLE and withholds the verdict — re-run against this very state
+file, it refuses the "+7.1 % WINS BOTH" it once printed.
 
 **Both goals were achievable at once.** The chosen setting is faster *and* cooler than
 stock on POWER. The "more performance vs less heat" tradeoff the

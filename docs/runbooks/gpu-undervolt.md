@@ -68,13 +68,17 @@ sudo ./tools/gpu-uv-explore.sh --resume       # continue, re-running nothing alr
 ./tools/gpu-ladder-report.sh --state ~/bench/explore-latest.tsv    # progress, NO root
 ```
 
-### ⚠️ `--resume` picks the NEWEST state file, which may not be the richest one
+### Resuming: `--resume` refuses to guess, `--state` names the file
 
-There is no `--state` flag on the explorer. `--resume` takes the newest `explore-*.tsv`
-lacking a `SWEEP COMPLETE` line — so a short later run outranks the long sweep that holds
-the real history. The predictor is rebuilt from whatever file it picks, and a thin file
-yields a **small proven delta**, which makes every lower anchor start too low and creep.
-Observed: a resume restored `+263` where the full ladder gives `+428`.
+With exactly one unfinished `explore-*.tsv` (no `SWEEP COMPLETE` line), `--resume` takes
+it. With several it **lists them and refuses** — it used to pick the newest by mtime,
+and a short later run outranks the long sweep that holds the real history: the predictor
+rebuilt from a thin file yields a small proven delta, every lower anchor starts too low,
+and the sweep creeps. Name the one you mean:
+
+```fish
+sudo ./tools/gpu-uv-explore.sh --resume --state ~/bench/explore-state.tsv
+```
 
 **Read the two lines it prints before walking away** — they are the whole check:
 
@@ -83,8 +87,13 @@ resuming: /home/g/bench/explore-state.tsv
 restored from the previous run: ceiling 3100 MHz, best proven delta +428 MHz
 ```
 
-Wrong file → re-open the right one by deleting only its terminator (this also makes it
-newest by mtime, which is what `--resume` sorts on):
+**Ctrl-C stops the run and keeps it resumable.** The in-flight rung is recorded
+`INTERRUPTED`, the curve resets to stock, and `SWEEP COMPLETE` is **not** written — no
+verdict is computed over a partial run. (It used to fall through: a 6-second abort
+produced a full verdict and a terminator that hid the file from `--resume`.)
+
+A file wrongly terminated anyway (older runs, hand damage) is re-opened by deleting only
+its terminator:
 
 ```fish
 sudo cp ~/bench/explore-state.tsv ~/bench/explore-state.tsv.bak
@@ -95,9 +104,6 @@ Nothing is fabricated by that — the passes and failures in the file are real r
 **Never hand-write rungs that were not run**; the predictor and the proven-delta cap are
 computed from this file, and an invented PASS raises the cap over a rung the silicon
 never held.
-
-Aborting a run writes `SWEEP COMPLETE`, which is why the next `--resume` reports
-*"no unfinished run to resume"*.
 
 `--screen 1` puts the benchmark on a second monitor so the primary stays usable. **Tabbing
 away does not disturb it** — the compositor never unmaps a fullscreen window, and the soak
@@ -114,17 +120,23 @@ property the whole procedure rests on.
 
 ## Reading the result
 
-The report ranks by **score**, because reported clock lies (see STRETCHED below). But read
-the score column knowing what it is: a BLOCK measurement, good enough to reject a rung that
-is clearly worse, **not** good enough to claim a few percent gain. For that, see the
-warning at the top.
+The report ranks by **score**, because reported clock lies (see STRETCHED below). But a
+score is a BLOCK measurement — good enough to reject a rung that is clearly worse, not
+good enough to claim a few percent gain — and the report now **enforces** that instead of
+asking the reader to remember it. It carries measured noise bars (score and power
+constants at the top of `gpu-ladder-report.sh`, with their provenance) and one
+cross-check: score is work delivered, so **a rung whose score gain exceeds its clock gain
+by more than the bar is not fast — its stock reference is broken.** One such rung poisons
+the whole table (every rung shares the reference), so the verdict is withheld.
 
 | Tag | Meaning |
 |---|---|
-| `WINS BOTH  [margin proven]` | at least as fast, less power, **and** a higher rung at the same anchor passed |
-| `WINS BOTH  [top rung — no margin above]` | at least as fast and cooler, but sitting at the edge |
+| `WINS  [margin proven]` | score held inside the noise bar, power down beyond it, **and** a higher rung at the same anchor passed |
+| `WINS  [top rung — no margin above]` | same, but sitting at the edge |
+| `IMPLAUSIBLE` / `VERDICT WITHHELD` | score gain the clock cannot explain — **the stock baseline is bad; re-run stock in the same session**, then re-report |
 | `STRETCHED` | **reports a higher clock and delivers less work** — see below |
-| `trade: X% score for Y% power` | slower, but cheaper |
+| `no measured benefit` | both deltas inside the noise bars |
+| `trade: X% score for Y% power` | slower beyond noise, but cheaper |
 
 ### The one counter-intuitive result: STRETCHED
 
