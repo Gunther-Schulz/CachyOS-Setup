@@ -124,9 +124,26 @@ fi
 # hand-picked ladder and anchors overlapping on three of four (it adds a safer 1050 first
 # rung and drops 875). Reproducing the manual choice from the curve alone is the evidence
 # that this is a rule and not a fit to one card.
+# ⚠️ THIS READS THE LIVE CURVE, and it runs before the stock snapshot below — it has to,
+# since --dry-run must print the ladder without writing anything to the GPU. So it cannot
+# reset first; instead it REFUSES to derive from a curve that is not stock. A flatten
+# leaves the top of the curve pinned to one frequency, which drags fmax down to the
+# flatten target and shifts every derived clock with it. Same detection rule as
+# gpu-flatten.sh's dry-run, for the same reason.
 derive_ladder() {
   local json
   json=$("$NVCURVE" read --json 2>/dev/null) || return 1
+  if [ "$(echo "$json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+f=[p["freq_kHz"] for p in d["vf_curve"] if p.get("domain")=="gpu" and p["volt_uV"]>0]
+print(1 if len(set(sorted(f)[-12:]))<=2 else 0)' 2>/dev/null)" = 1 ]; then
+    echo "⚠️ The card is not at stock — the top of the curve is flat, which is what an" >&2
+    echo "   applied flatten looks like. A ladder derived from it would be wrong." >&2
+    echo "   Reset first:  sudo $HERE/gpu-flatten.sh --reset" >&2
+    echo "   Or pass the ladder explicitly with --anchors / --clocks." >&2
+    return 1
+  fi
   echo "$json" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
@@ -301,8 +318,25 @@ say ""
 # Base frequency at an anchor voltage, from the card's own curve. The delta the silicon
 # is being asked for is (target - base), and that ask — not the absolute clock — is what
 # plausibly governs stability. Used to PREDICT where to start each lower anchor.
+#
+# IT MUST READ THE STOCK CURVE, NEVER THE LIVE ONE.
+#
+# nvcurve deltas are offsets from stock, so a flattened curve reports the FLATTENED
+# frequency as its base. Every delta then computes as (target - flattened) instead of
+# (target - stock), which collapses toward zero — and DELTA_CAP, the guard that refuses a
+# rung the silicon has never held, inflates by exactly the amount of the flatten. The
+# numbers stay plausible the whole way; nothing errors. That guard is what stopped a +998
+# ask on 2026-08-04, and the ask it did not stop hard-locked the machine.
+#
+# Reachable on the RESUME path specifically: the reset before the predictor rebuild lived
+# inside the `else` of the baseline block, so a resume with the baseline already recorded
+# skipped it and rebuilt the predictor against whatever curve happened to be live.
+# Snapshotting once, straight after an explicit reset, makes the read independent of
+# everything the sweep does to the card afterwards.
+STOCK_CURVE="$STATE_DIR/.stock-curve.json"
 base_at() {
-  "$NVCURVE" read --json 2>/dev/null | python3 -c '
+  { if [ -s "$STOCK_CURVE" ]; then cat "$STOCK_CURVE"
+    else "$NVCURVE" read --json 2>/dev/null; fi; } | python3 -c '
 import json,sys
 d=json.load(sys.stdin); mv=float(sys.argv[1])
 c=[p for p in d["vf_curve"] if p.get("domain")=="gpu" and p["volt_uV"]/1000.0>=mv]
@@ -499,6 +533,18 @@ power_of() {
   [ -n "$d" ] && [ -f "$d/sensors.txt" ] || { echo 0; return; }
   awk '$3!="n/a" && $3+0>100 {n++; p+=$3} END{printf "%d", (n? p/n : 0)}' "$d/sensors.txt"
 }
+
+# ── stock curve snapshot ────────────────────────────────────────────────────────────
+# Unconditional, and BEFORE the baseline branch — the reset below is inside that branch's
+# `else`, so a resume that skips the baseline never reaches it (see base_at above).
+"$NVCURVE" write --reset >/dev/null 2>&1
+if "$NVCURVE" read --json 2>/dev/null > "$STOCK_CURVE" && [ -s "$STOCK_CURVE" ]; then
+  say "stock curve snapshotted — every base_at reads this, not the live card"
+else
+  rm -f "$STOCK_CURVE"
+  say "⚠️ could not snapshot the stock curve; base_at falls back to LIVE reads."
+  say "   Deltas are then only correct while the card is at stock — do not trust a resume."
+fi
 
 # ── baseline ────────────────────────────────────────────────────────────────────────
 if [ "$BASE_DONE" = 1 ]; then

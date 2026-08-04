@@ -258,6 +258,60 @@ done
 if [ "$lint_hits" -eq 0 ]; then printf '  ✅ %-34s\n' "no self-referencing local lines"; PASS=$((PASS+1))
 else FAIL=$((FAIL+lint_hits)); fi
 
+# ── base_at must read the STOCK curve, never the live one ───────────────────────────
+#
+# nvcurve deltas are offsets from stock, so a flattened card reports the FLATTENED
+# frequency as its base. base_at feeds DELTA_CAP — the guard that refuses a rung the
+# silicon has never held — so reading a flattened curve inflates that cap by exactly the
+# size of the flatten, silently. The cap is what stopped a +998 ask on 2026-08-04; the
+# ask it failed to stop hard-locked the machine.
+#
+# The stub below IS a flattened card: every point pinned to 3000 MHz, which is what
+# `gpu-flatten.sh --mv 1000 --mhz 3000` leaves behind. A base_at that consults the live
+# card returns 3000 for every anchor and the deltas all collapse to zero.
+echo
+echo "=== base_at reads the stock snapshot, not the live card ==="
+BASE_FN="$TMP/base_at.sh"
+sed -n '/^STOCK_CURVE=/,/^}/p' "$SUT" > "$BASE_FN"
+[ -s "$BASE_FN" ] || { echo "FATAL: could not extract base_at from $SUT" >&2
+                       echo "       (the anchors changed — fix this test, do not delete it)" >&2; exit 1; }
+
+python3 - "$TMP" <<'PY'
+import json, sys
+t = sys.argv[1]
+stock = [(2002,900),(2347,925),(2572,950),(2737,1000)]
+mk = lambda pts: {"vf_curve":[{"domain":"gpu","volt_uV":mv*1000,"freq_kHz":f*1000} for f,mv in pts]}
+json.dump(mk(stock), open(f"{t}/stock.json","w"))
+json.dump(mk([(3000,mv) for _,mv in stock]), open(f"{t}/flattened.json","w"))
+PY
+
+# a stub `nvcurve` that reports the FLATTENED card — stands in for a live read
+printf '#!/bin/sh\ncat %s/flattened.json\n' "$TMP" > "$TMP/nvcurve"; chmod +x "$TMP/nvcurve"
+NVCURVE="$TMP/nvcurve"; STATE_DIR="$TMP"
+# shellcheck disable=SC1090
+. "$BASE_FN"
+cp "$TMP/stock.json" "$STOCK_CURVE"
+
+for spec in 900:2002 925:2347 950:2572 1000:2737; do
+  mv=${spec%%:*}; want=${spec##*:}; got=$(base_at "$mv")
+  if [ "$got" = "$want" ]; then
+    printf '  ✅ %-34s -> %s MHz\n' "base at ${mv} mV (card flattened)" "$got"; PASS=$((PASS+1))
+  else
+    printf '  ❌ %-34s -> got %s, expected %s\n' "base at ${mv} mV (card flattened)" "$got" "$want"
+    printf '     read the LIVE (flattened) curve; every delta and DELTA_CAP is wrong\n'; FAIL=$((FAIL+1))
+  fi
+done
+
+# and the fallback still works when no snapshot exists — a missing snapshot must not
+# silently return 0, which would disable the cap entirely rather than loosen it
+rm -f "$STOCK_CURVE"
+got=$(base_at 950)
+if [ "$got" = "3000" ]; then
+  printf '  ✅ %-34s -> %s MHz (live fallback)\n' "no snapshot: falls back, not 0" "$got"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s -> got %s, expected 3000\n' "no snapshot: falls back, not 0" "$got"; FAIL=$((FAIL+1))
+fi
+
 echo
 if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi
