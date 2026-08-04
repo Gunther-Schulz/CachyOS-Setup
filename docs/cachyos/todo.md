@@ -217,15 +217,52 @@
 
   **This is where the remaining power savings live.** 950 mV already delivered the same
   score as 1000 mV for **17 W less**; 900 mV may extend that, and the only reason to stop
-  is a rung that cannot hold the floor clock. **First, repair the record** — the
+  is a rung that cannot hold the floor clock.
+
+  🎯 **Target from the FE guide + two AIB replies: `890 mV @ 2827 MHz`, and this is an FE.**
+  The guide's author reaches 2827 at 0.890 V and states plainly that his ceiling is the
+  **tool's +1000 MHz-per-node cap, not the silicon** — "0.890 is the lowest voltage which
+  allows me to match stock speeds" — and that "+2827 at 0.890 is the limit for FE and some
+  AIB cards." AIB corroboration: Astral OC at 0.895 V/2902 MHz, **−20 % power for <2 %
+  score**; MSI Ventus at 0.9 V/2900 MHz "rock solid". `nvcurve` has the same ±1000 cap.
+
+  On this card that target is **+825 MHz at the anchor** (base at 900 mV is **2002**), and
+  it sits **inside a measured bracket**: +435 passed (`1000mV/3100`), +998 hard-locked
+  (the mis-applied `900mV/3000`). So it is neither proven nor ruled out — it is the open
+  question, and a bigger prize than the 17 W at 950 mV.
+
+  ⚠️ **Compare DELIVERED clock, not requested.** The guide's own note: 2827 is only
+  reached at unrealistically low temperatures; in game it runs **2670–2700**. This card's
+  `1000mV/3000` requests 3000 and delivers **2802**. So 890/2827 may be ~4 % *slower*
+  than the current setting while drawing far less — judge it on score, per the
+  clock-stretching finding, never on `nvidia-smi`.
+
+  ⚠️ **The queued command below BAILS at 900 mV without `--clocks`.** Derived floor is
+  2700; predicted start is base 2002 + proven delta 435 = 2437, below the floor, so the
+  explorer correctly prints "cannot reach the floor" and ends the sweep — a no-op that
+  reads like an answer. The proven-delta cap is a **ratchet, not a wall**
+  (`gpu-uv-explore.sh:716` raises `MAX_DELTA` on every pass), so walking 925 → 900 → 890
+  with a lower clock list lets each pass unlock the next rung. Verify the ladder first
+  with `--dry-run`, which writes nothing to the GPU.
+
+  **First, repair the record** — the
   `1000mV/3100` retest passed but was run by hand, so the state file does not know, and
   without it the final selection will wrongly back `1000mV/3000` down to 2900:
 
   ```fish
   printf '1000mV/3100\tFINISHED\tPASS\t%s\t/home/g/bench/soak-20260804-175137\n' (date -Is) \
     | sudo tee -a ~/bench/explore-state.tsv
-  sudo ./tools/gpu-uv-explore.sh --resume --anchors "900 875"
+
+  # check the ladder before committing 3-4 h — writes nothing to the GPU
+  sudo ./tools/gpu-uv-explore.sh --resume --dry-run \
+    --anchors "925 900 890" --clocks "2500 2600 2700 2800 2900 3000"
+
+  sudo ./tools/gpu-uv-explore.sh --resume --screen 1 \
+    --anchors "925 900 890" --clocks "2500 2600 2700 2800 2900 3000"
   ```
+
+  925 mV is in the list deliberately: it is the untested gap between the proven 950 and
+  the target 890, and each rung it passes raises the ratchet that gates the next anchor.
 
   On resume it will ask about the unfinished `950mV/3100` rung — **answer `y`, it did crash
   the machine.**
