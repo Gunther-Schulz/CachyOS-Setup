@@ -676,6 +676,47 @@ starved for power at gaming load — but a genuine, measurable win in either dir
 
 ## RESULT: the undervolt ladder so far, and the setting to use (2026-08-04)
 
+### ⚠️ RETRACTED: "+7.1 % score". The performance claim does not reproduce.
+
+**The setting delivers the same performance at ~9.5 % less power. It is not faster.**
+The ladder's score column below was measured as BLOCKS — four passes at one setting, then
+four at the next, blocks compared across time — which charges any drift between them to
+the setting. Run twice, hours apart, that design produced a claim and its own refutation:
+
+| session | stock | 1000mV/3000 | conclusion |
+|---|---|---|---|
+| 16:28 | 76 896 | 82 329 | **+7.1 % — faster** |
+| 19:14 | **82 244** | **79 531** | **−3.3 % — slower** |
+
+Same setting, same card, delivered clock identical in all four runs (2802–2813 MHz, a
+0.4 % spread) and GPU utilization flat at 92–93.5 %. The effect and the between-block
+noise were the same size, so the SIGN of the result was decided by when it ran.
+
+Settled by [`tools/gpu-ab-compare.sh`](../../../tools/gpu-ab-compare.sh) — stock and
+setting interleaved within one session, counterbalanced ABBA so the within-run warming
+trend cancels instead of landing on one arm:
+
+| | n | score | power |
+|---|---|---|---|
+| setting | 3 | 78 842 | **328 W** |
+| stock | 9 | 78 764 | **362 W** |
+| **difference** | | **+0.10 %**, 95 % CI **[−0.10 %, +0.29 %]** | **−9.5 %** |
+
+**Score: no measurable difference, and the interval is tight** — any true effect is under
+±0.3 %. **Power: −9.5 %, and it reproduced in every session** (352→333, 366→327, 362→328).
+Power was always the separable signal; score never was.
+
+Consistent with the clock column, which nobody read: delivered clock is unchanged by this
+setting. A setting that does not change the clock was never going to change the score.
+
+⚠️ **This also weakens the clock-stretching finding below.** Its power evidence was a
+1.8 % drop (333→327 W) — but `1000mV/3000` itself measured 333 W and 327 W in two
+sessions with no setting change at all. That argument used a difference smaller than the
+noise. The *score* deficit at 3100 was 3.1 %, larger than the A/B noise band, so the
+conclusion "3100 is not better" stands; the mechanism does not.
+
+
+
 ⚠️ **The sweep is INCOMPLETE.** Planned anchors were `1000 950 900 875` mV; the
 `950mV/3100` hard lock ended the run after **1000 and 950 only**. Everything below is the
 best setting *among what was measured* — **900 and 875 mV were never tested**, and 950 mV
@@ -688,16 +729,19 @@ session**, not carried from earlier.
 
 | rung | score | vs stock | reported MHz | watts | vs stock | verdict |
 |---|---|---|---|---|---|---|
-| stock | 76 896 | — | 2 811 | 352 | — | control |
+| stock | 76 896 † | — | 2 811 | 352 | — | control |
 | 1000 mV / 2800 | 77 137 | +0.3 % | 2 749 | 342 | −2.8 % | pass |
 | 1000 mV / 2900 | 79 560 | +3.5 % | 2 743 | 327 | −7.1 % | pass |
-| **1000 mV / 3000** | **82 329** | **+7.1 %** | 2 802 | **333** | **−5.4 %** | **pass — chosen** |
+| **1000 mV / 3000** | 82 329 † | — | 2 802 | **333** | **−5.4 %** | **pass — chosen** |
 | 950 mV / 3000 | 82 400 | +7.2 % | 2 781 | 316 | −10.2 % | pass |
 | 1000 mV / 3100 | 79 778 | +3.7 % | 2 881 | 327 | −7.1 % | stable but **slower** |
 | 950 mV / 3100 | — | — | — | — | — | 💥 **hard lock** |
 
+† **Score columns are block measurements and are NOT comparable across rungs** — see the
+retraction above. The power column is; it reproduced across three sessions.
+
 **Both goals were achievable at once.** The chosen setting is faster *and* cooler than
-stock: +7.1 % score for −5.4 % power. The "more performance vs less heat" tradeoff the
+stock on POWER. The "more performance vs less heat" tradeoff the
 early analysis assumed turned out not to bind — flattening buys both, because stock was
 spending voltage it did not need.
 

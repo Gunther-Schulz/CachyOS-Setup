@@ -187,7 +187,7 @@
 
   **Not applicable here:** the AGESA 1.3.0.0+ **ECC-UDIMM 5200 MT/s cap**. The kit is `CMH64GX5M2D6000Z40` — Corsair Vengeance RGB, a consumer non-ECC line (inferred from the `CMH` part-number prefix, not a datasheet lookup); corroborated by no ECC memory controller being registered on this machine. If that inference is ever wrong, the cap would bite at 6000.
 
-- **Desktop — ✅ LARGELY DONE (2026-08-04): GPU undervolt. Setting chosen: `1000 mV / 3000 MHz` flatten — +7.1 % score for −5.4 % power vs stock.** Full ladder table, the 950 mV-vs-1000 mV margin argument, and the clock-stretching finding: [nvidia/5090-thermals.md](nvidia/5090-thermals.md) → *"RESULT: the undervolt ladder"*.
+- **Desktop — ✅ LARGELY DONE (2026-08-04): GPU undervolt. Setting chosen: `1000 mV / 3000 MHz` flatten — same performance at −9.5 % power.** (An earlier "+7.1 % score" claim is **RETRACTED**: it came from block comparison and inverted to −3.3 % when re-run hours later. Interleaved A/B settles it at +0.10 %, 95 % CI [−0.10 %, +0.29 %] — no measurable performance change. Power reproduced in every session.) Full ladder table, the 950 mV-vs-1000 mV margin argument, and the clock-stretching finding: [nvidia/5090-thermals.md](nvidia/5090-thermals.md) → *"RESULT: the undervolt ladder"*.
 
   ```fish
   sudo ./tools/gpu-flatten.sh --mv 1000 --mhz 3000   # apply (NOT persistent across reboot)

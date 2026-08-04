@@ -3,8 +3,15 @@
 **Machine:** Any NVIDIA card `nvcurve` supports (tested: RTX 5090 Blackwell, driver
 610.43.03). Written for a fresh context — no prior session knowledge assumed.
 
-**Goal:** more performance *and* less heat, by making the card do the same work at a lower
-voltage. Not a tradeoff — on the 5090 this delivered +7.1 % score for −5.4 % power.
+**Goal:** the same work at a lower voltage — less power and heat for equal performance.
+On the 5090 this delivered **−9.5 % power at unchanged performance**.
+
+⚠️ **Do not claim a performance gain from block comparisons.** Measuring four passes at
+one setting, then four at the next, charges any drift between the blocks to the setting.
+On this card that produced +7.1 % at 16:28 and −3.3 % at 19:14 for the SAME setting, with
+delivered clock identical to 0.4 % in all four runs. Any performance claim needs
+[`gpu-ab-compare.sh`](../../tools/gpu-ab-compare.sh), which interleaves the arms within
+one session. Power is separable and survives block comparison; score is not and does not.
 
 ---
 
@@ -60,12 +67,15 @@ property the whole procedure rests on.
 
 ## Reading the result
 
-The report ranks by **score**, and that is the point of the whole exercise:
+The report ranks by **score**, because reported clock lies (see STRETCHED below). But read
+the score column knowing what it is: a BLOCK measurement, good enough to reject a rung that
+is clearly worse, **not** good enough to claim a few percent gain. For that, see the
+warning at the top.
 
 | Tag | Meaning |
 |---|---|
-| `WINS BOTH  [margin proven]` | faster *and* cooler, **and** a higher rung at the same anchor passed |
-| `WINS BOTH  [top rung — no margin above]` | faster and cooler, but sitting at the edge |
+| `WINS BOTH  [margin proven]` | at least as fast, less power, **and** a higher rung at the same anchor passed |
+| `WINS BOTH  [top rung — no margin above]` | at least as fast and cooler, but sitting at the edge |
 | `STRETCHED` | **reports a higher clock and delivers less work** — see below |
 | `trade: X% score for Y% power` | slower, but cheaper |
 
@@ -84,12 +94,17 @@ Measured on the 5090 at `1000mV/3100` against `1000mV/3000`:
 | power | 333 W | 327 W | **−1.8 %** ← should have RISEN |
 | score | 82 329 | 79 778 | **−3.1 %** |
 
-Power goes as f·V². At a fixed voltage ceiling a real clock increase *must* cost power. It
-didn't — so the effective clock was below the reported one.
+Power goes as f·V². At a fixed voltage ceiling a real clock increase *must* cost power.
 
-**Therefore: a stability soak cannot find the optimum.** The useful ceiling is set by score
-and arrives *before* the crash — a full 100 MHz before it, here. The tools detect this
-automatically and stop; you do not have to spot it.
+⚠️ **The mechanism is a hypothesis, not a result.** That −1.8 % power argument used a
+difference smaller than the noise: `1000mV/3000` itself measured 333 W and 327 W in two
+sessions with no setting change at all. What holds is the *score* deficit, −3.1 %, which is
+larger than the interleaved A/B noise band (±0.3 %) — so **3100 is not better than 3000**,
+and the reason why is unsettled.
+
+**What survives regardless: a stability soak cannot find the optimum.** A rung can pass
+every stability check and still deliver less work, so the useful ceiling is set by score and
+arrives *before* the crash — a full 100 MHz before it, here. The tools detect this and stop.
 
 ### Which rung to actually run
 
@@ -99,8 +114,25 @@ that backed-off rung is untested by definition.
 
 Worked example from the 5090: `950mV/3000` scored *higher* (82 400 vs 82 329) but
 `950mV/3100` **hard-locked the machine**, so it sits directly beneath a hard failure.
-`1000mV/3000` had `1000mV/3100` pass above it. Statistically tied on score (0.1 %, against
-2.4 % run-to-run spread), so the margin decides. The report does this reasoning for you.
+`1000mV/3000` had `1000mV/3100` pass above it. Tied on score within the noise, so the margin
+decides — which is the right way round: **margin is a stability fact, score at this
+resolution is not a fact at all.** The report does this reasoning for you.
+
+---
+
+## Measuring the setting honestly
+
+Two tools, because the ladder answers neither question well:
+
+```fish
+sudo ./tools/gpu-ab-compare.sh --mv 1000 --mhz 3000     # is it faster? (~35 min)
+sudo ./tools/gpu-capped-probe.sh --mv 1000 --mhz 3000   # does it help when power-capped? (~4 min)
+```
+
+`gpu-ab-compare.sh` interleaves stock and setting within one session, counterbalanced ABBA,
+and reports a paired difference with a confidence interval. It is the only thing here that
+can support a performance claim. `gpu-capped-probe.sh` measures the other regime — pinned
+at the power limit, where the payout is more clock rather than less power.
 
 ---
 
@@ -114,6 +146,7 @@ sudo ./tools/gpu-flatten.sh --reset                  # back to stock
 Before trusting it daily:
 
 1. **12-pass soak** — `sudo ./tools/gpu-soak.sh --screen 1 --passes 12`
+   (stability only — 12 passes of one scene is not evidence about performance)
 2. **~1 h of a real game.** One fixed benchmark scene is one shader mix, not a workload.
    Check `journalctl -b | grep -i xid` afterwards.
 3. Only then make it persistent (nvcurve profile → systemd unit).
@@ -139,12 +172,13 @@ machine has to be brought back by hand.
 ## Verify the tools themselves
 
 ```fish
-./tools/test-gpu-uv-selection.sh    # 11 cases, no root, no GPU, ~1 s
+./tools/test-gpu-uv-selection.sh    # 19 cases, no root, no GPU, ~1 s
 ```
 
-Run it after touching `gpu-uv-explore.sh`. It pins the selection rule and the
-clock-stretch detector against fixtures, and it extracts the live code rather than
-restating it, so it cannot pass while the script drifts underneath it.
+Run it after touching `gpu-uv-explore.sh` or `gpu-flatten.sh`. It pins the selection rule,
+the clock-stretch detector, the proven-delta cap and flatten idempotency against fixtures,
+and it extracts the live code rather than restating it, so it cannot pass while the script
+drifts underneath it.
 
 ---
 
