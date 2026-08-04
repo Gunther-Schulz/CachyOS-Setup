@@ -443,12 +443,34 @@ Compare FPS **and** the power/clock traces. If Vulkan draws meaningfully more po
 clocks at the same voltage, OpenGL was leaving the card idle inside a "100 % utilised"
 reading — which is exactly the trap that made the earlier 493 W figure misleading.
 
-**2. External corpus that actually contains Linux results** — Superposition's leaderboard
-is Windows/DirectX-dominated and therefore not a valid reference for a Linux OpenGL run.
-Candidates under research: OpenBenchmarking.org (Phoronix Test Suite, Linux-native
-corpus filterable by GPU), GravityMark (cross-platform Vulkan with its own leaderboard),
-and real games with built-in benchmarks under Proton. **Unverified — which of these has
-a usable RTX 5090 Linux corpus is being checked.**
+**2. External corpus that actually contains Linux results** — researched 2026-08-04:
+
+| Tool | Corpus | RTX 5090 **Linux** entries |
+|---|---|---|
+| **Phoronix Test Suite** / OpenBenchmarking.org (AUR `phoronix-test-suite`) | large, ongoing, GPU-filterable | ✅ **confirmed present**, incl. a Unigine set (`2501310-PTS-UNIGINER91`) and gaming sets (`2501303-PTS-NVIDIAJA55`) |
+| GravityMark | real GPU/API/OS filters exist | ❌ unconfirmed — and its **default view merges Windows+Linux and Vulkan+D3D12**, the same trap as Unigine's |
+| vkmark / glmark2 | on OpenBenchmarking | unconfirmed; scenes likely too light to load a 5090 |
+| **Unigine's own leaderboard** | — | ⚠️ **Cannot determine whether it segments by OS/API at all** — pages render empty to a fetcher. **So the 47–53 k comparison group's platform is unknown**, and the 33 % deficit may be measured against Windows/DirectX systems. |
+
+**PTS is the answer to "make it comparable"** — Linux-to-Linux, and no upload needed:
+```sh
+yay -S phoronix-test-suite
+phoronix-test-suite benchmark 2501310-PTS-UNIGINER91   # runs yours against that published Linux result
+phoronix-test-suite merge-results                       # purely local diff
+```
+Browsing and comparing require nothing to be uploaded; `upload-result` only publishes
+*your* result into the public set.
+
+⚠️ **Provisional and load-bearing: ~33 % may be too large for an API effect alone.**
+Measured same-machine Superposition OpenGL-vs-DirectX deltas run **~10–18 %** (Radeon VII
+~18 %, RTX 3070 1080p Extreme ~10 %), and Phoronix reportedly found Superposition
+*"basically identical"* between Windows and Linux when the API is held constant. If both
+hold, roughly half the shortfall is unexplained and the hardware/config question is **not
+closed**. **But this rests on a two-hop chain of sources that could not be read at
+source** (phoronix.com returned 403 to every fetch; the figures come from search
+snippets). Treat as a lead, not a finding — and note the local counter-evidence is
+strong: FurMark Vulkan drove this card to `SW Power Cap: Active` at 565 W, which is not
+the behaviour of underperforming hardware.
 
 **What this means for the undervolt.** Two directions are open, both real:
 - **More performance:** raise the frequency at 1.075 V toward the curve's 2 917 MHz.
