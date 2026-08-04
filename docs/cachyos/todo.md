@@ -264,16 +264,53 @@
      - `/lib/modules/7.1.5-1-cachyos/kernel/arch/x86/kernel/cpu/mce/mce-inject.ko.zst`
      - `einj` (ACPI APEI error injection), currently unloaded — `/sys/firmware/acpi/einj` does not exist
 
-     ❌ **The userspace `mce-inject` tool is NOT packaged for Arch — not in the repos, not in the AUR** (`yay -S mce-inject` → "No AUR package found"). An earlier note here called it "AUR-only"; that was inferred from `pacman -Qo` returning no owner, which only proves it is not installed. Upstream is [`andikleen/mce-inject`](https://github.com/andikleen/mce-inject), buildable from source.
+     ❌ **The userspace `mce-inject` tool is NOT packaged for Arch — not in the repos, not in the AUR** (`yay -S mce-inject` → "No AUR package found"). An earlier note here called it "AUR-only"; that was inferred from `pacman -Qo` returning no owner, which only proves it is not installed. Upstream is [`andikleen/mce-inject`](https://github.com/andikleen/mce-inject), buildable from source. **Not needed** — the kernel's own debugfs interface does the job.
 
-     **Try the kernel interfaces first — they need no userspace tool:**
-     ```fish
-     sudo modprobe einj;       ls /sys/firmware/acpi/einj        # cleanest if the BIOS exposes EINJ
-     sudo modprobe mce-inject; ls /sys/kernel/debug/mce-inject/ /sys/kernel/debug/mce/
+     ❌ **ACPI EINJ is unavailable on this board (2026-08-04).** `einj` loads as a module but `/sys/firmware/acpi/einj` never appears — the firmware ships no EINJ tables. Normal for a consumer board. Don't re-try it.
+
+     ✅ **`mce-inject` debugfs interface is live** (`mce_inject` loaded, 2026-08-04), and it is the SMCA-aware variant — `ipid` and `synd` are AMD Scalable-MCA fields, so an injected error can be shaped like one from a real UMC bank:
      ```
-     EINJ needs firmware tables that consumer boards frequently omit, so it may simply not appear. Whichever interface materialises, read its actual file list before writing to it — the field layout differs between them and is not worth reconstructing from memory.
+     /sys/kernel/debug/mce-inject/  → addr bank cpu flags ipid misc README status synd
+     /sys/kernel/debug/mce/         → fake_panic severities-coverage
+     ```
+     Read `/sys/kernel/debug/mce-inject/README` for field semantics (it is on the machine; note **`ls` and `cat` here need `sudo` themselves** — `/sys/kernel/debug` is mode `0700`, and `sudo modprobe … ; ls …` leaves the `ls` unprivileged).
 
-     ⚠️ **Corrected (CE) errors only.** An uncorrected/fatal status word panics the machine by design — that is the tool working as intended, not a mistake to discover experimentally.
+     **The test — `sw` mode, corrected error, safe by the README's own words** ("Software error injection. Decode error to a human-readable format only. Safe to use."). **Writing `bank` triggers the injection, so it goes last:**
+     ```fish
+     echo sw                 | sudo tee /sys/kernel/debug/mce-inject/flags
+     echo 0x9400000000000135 | sudo tee /sys/kernel/debug/mce-inject/status
+     echo 0x0010000000       | sudo tee /sys/kernel/debug/mce-inject/addr
+     echo 0                  | sudo tee /sys/kernel/debug/mce-inject/cpu
+     echo 0                  | sudo tee /sys/kernel/debug/mce-inject/bank    # ← triggers
+     ```
+     Status word, bit by bit — the two that matter for safety are the ones left **clear**:
+
+     | Bit | Name | Set? | Why |
+     |---|---|---|---|
+     | 63 | VAL | **1** | else the entry is ignored entirely |
+     | 61 | UC | **0** | **corrected**, not uncorrectable |
+     | 60 | EN | **1** | error reporting enabled |
+     | 58 | ADDRV | **1** | `addr` above is meaningful |
+     | 57 | PCC | **0** | **PCC=1 is what panics the machine** |
+     | 15:0 | MCACOD | `0x0135` | the error code; **arbitrary for this test** — what is being proven is that *an* MCE reaches the collector, not that a specific error type decodes correctly |
+
+     `fake_panic` is **not** needed for `sw` — it exists for `hw` mode, which raises a real #MC exception. Do not use `hw`.
+
+     **Reading the result — this is what makes the outcome unambiguous:**
+     ```fish
+     sudo dmesg | tail -20
+     sudo ras-mc-ctl --errors
+     ```
+
+     | dmesg | ras-mc-ctl | Conclusion |
+     |---|---|---|
+     | shows it | shows it | ✅ **lane live** — clean results become real evidence |
+     | shows it | silent | ❌ **rasdaemon is not collecting** — the finding this test exists for |
+     | silent | silent | inconclusive — encoding or trigger wrong, **not** proof of a dead lane; adjust and retry |
+
+     That third row is why both readouts are taken: the kernel decoder prints on `sw` injection independently of rasdaemon, so `dmesg` separates "the injection didn't happen" from "the collector didn't catch it". Without it, a bad status word would look exactly like a dead collector.
+
+     ⚠️ **Residual unknown:** whether the `sw` path emits the `mce_record` tracepoint rasdaemon subscribes to, or only prints. If dmesg shows the error and `ras-mc-ctl` does not, try `df` (deferred) mode before concluding rasdaemon is broken.
 
      Until that has gone red once, treat **every** clean `ras-mc-ctl` result in this repo — including the 2026-08-03 baseline above — as *unproven*, not as evidence of health.
 
