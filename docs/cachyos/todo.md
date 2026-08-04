@@ -262,6 +262,30 @@
   | +300 | not tested at gaming clocks | `gpu_burn` clean only — weak evidence |
   | **+400** | **FROZE** | ❌ past the wall |
 
+  **The +400 failure, fully characterised (2026-08-04):**
+  ```
+  E:  2:40.845: VK::error(): device lost          ← GravityMark, ~2m40s into the run
+  kernel: NVRM: Xid (PCI:0000:01:00): 109, pid=446324, name=GravityMark.x64,
+          channel 0x0000001b, errorString CTX SWITCH TIMEOUT, Info 0x5c01a
+  ```
+  **Xid 109 / CTX SWITCH TIMEOUT** — a shader hung and the GPU could not complete a
+  context switch. The textbook signature of an unstable V/F point, and **no visual
+  artifact preceded it**: the failure mode here is a hang, not corruption. Artifact-
+  watching would not have caught this either; only running the load did.
+
+  **Why the offset pays in this workload — the operating point at +250:**
+  ```
+  Frequency 3.04 GHz   Power 386.6 W   Temp 74 °C   Fan 47 %   Utilisation 94 %
+  ```
+  **386 W of a 575 W limit — 190 W of unused headroom.** The card is nowhere near its
+  power cap here; it is limited by how much clock it can get per volt. That is exactly
+  the regime a curve offset addresses, and it is why the same offset produced ~3 % here
+  and nothing measurable under `gpu_burn` and FurMark, both of which pin 575 W. The
+  earlier "the gain is noise" reading came from measuring only in the regime where no
+  gain is possible.
+
+  (Utilisation 94 %, not 100 %, so a small non-GPU bottleneck exists — not investigated.)
+
   **The wall is between +300 and +400. Take +250.** It already delivers the full ~3 %, and per the back-off-one-step rule the last *passing* setting is the edge rather than the target — +300 rests only on the weak test that +400 just discredited.
 
   **The ~3 % is corroborated by a second workload once temperature is controlled.** `gpu_burn` GFLOP/s looked flat across offsets, but that comparison was temperature-confounded — each sweep step started hotter than the last. Matched by temperature: **67 915 at +400/72 °C vs 65 681 at +50/71 °C (+3.4 %)**, and **64 595 at +400/87 °C vs ~63 000 at +50/86 °C**. Same ~3 % GravityMark showed, from an independent load.
