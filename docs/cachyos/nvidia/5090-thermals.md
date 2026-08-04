@@ -156,6 +156,30 @@ downside; what remains is a *negative* clock offset, which lowers voltage only b
 running the card slower — strictly worse than the two-part technique at the same
 performance.
 
+⚠️ **"The pairing is the only route" is under test, not established.** It is the
+commonly documented Linux recipe, which is not the same as a technical necessity —
+and this repo already has a precedent against assuming the public API is the limit:
+hotspot and memory-junction temperature are absent from every public NVIDIA interface
+on this generation, yet `nvidia-gpu-sensors` reads them through the driver's own
+ioctls. `NV2080_CTRL_CMD_VOLT_VOLT_RAILS_GET_STATUS` already **reads** NVVDD/MSVDD on
+this card; whether a SET path exists is an open question, not a closed one.
+
+### Acceptance criteria for any undervolt method (operator, 2026-08-04)
+
+A method that produces good benchmark numbers but fails these is not a solution:
+
+1. **The card must still idle down.** A fixed clock is disqualifying. Note
+   `nvidia-smi -lgc` takes a `<min,max>` **pair** — verified in this driver's own help
+   text — so a ceiling cap with a low floor (`-lgc 210,2600`) preserves idle
+   behaviour, while a singular value (`-lgc 2600`) pins the clock and does not. An
+   earlier note here described `-lgc` as "locking to a fixed clock"; that conflated the
+   two forms.
+2. **It must survive reboot** without manual re-application, or come with the unit that
+   reapplies it. Clock offsets, power limits and `-lgc` are all **runtime state**, and
+   `persistence_mode` is currently **Disabled** on this machine.
+3. **No per-application or per-game fiddling.** Anything needing a command before each
+   workload is not a daily-driver answer.
+
 ## Open: case fans are driven by CPU temperature only
 
 Under a GPU-only load the CPU stays idle, so a CPU-temperature fan curve has no
