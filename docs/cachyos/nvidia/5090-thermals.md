@@ -392,11 +392,40 @@ benchmark on a weak API path is not that. **Open — the card never exceeded 1.0
 either run despite a curve reaching 1 240 mV, so it may be voltage-ceiling limited at
 gaming load; but that is a hypothesis from two unrepresentative loads, not a finding.**
 
-**Next measurement, cheap and decisive:** Superposition **8K Optimized** — same renderer,
-much heavier workload. If it reaches 575 W, then a graphics load *can* hit the cap and
-the 4K result was simply light. If it still settles well below, the OpenGL path itself
-is the ceiling. After that, a real game through Proton/Vulkan is the only load that
-answers the question properly.
+❌ **Rejected: "run 8K Optimized to see if a heavier load hits the cap."** The
+leaderboard systems ran **the same 4K preset** and scored 50 % higher, so workload weight
+is not the variable — the platform is. A heavier preset on the same handicapped path
+measures a different point on that path, not the card's ceiling.
+
+### Methodology: a benchmark without a comparison corpus is a number, not a measurement
+
+The 33 % deficit was only visible because a leaderboard existed. **A score in isolation
+cannot detect underperformance** — this is the general lesson, not a Superposition
+detail, and it applies to every benchmark in this repo.
+
+Two ways to get a real reference:
+
+**1. Within-machine A/B — self-contained, no external corpus needed.** Run the *same
+workload* through two different APIs on the same card. A large gap identifies the render
+path; a small gap moves suspicion back to the hardware. **FurMark 2 is the clean
+instrument** because it ships both OpenGL and Vulkan modes — same scene, same machine,
+one variable:
+
+```sh
+yay -S furmark
+sudo ./tools/gpu-thermal.sh api-gl     -l none -t 240   # FurMark, OpenGL mode
+sudo ./tools/gpu-thermal.sh api-vulkan -l none -t 240   # FurMark, Vulkan mode
+```
+Compare FPS **and** the power/clock traces. If Vulkan draws meaningfully more power and
+clocks at the same voltage, OpenGL was leaving the card idle inside a "100 % utilised"
+reading — which is exactly the trap that made the earlier 493 W figure misleading.
+
+**2. External corpus that actually contains Linux results** — Superposition's leaderboard
+is Windows/DirectX-dominated and therefore not a valid reference for a Linux OpenGL run.
+Candidates under research: OpenBenchmarking.org (Phoronix Test Suite, Linux-native
+corpus filterable by GPU), GravityMark (cross-platform Vulkan with its own leaderboard),
+and real games with built-in benchmarks under Proton. **Unverified — which of these has
+a usable RTX 5090 Linux corpus is being checked.**
 
 **What this means for the undervolt.** Two directions are open, both real:
 - **More performance:** raise the frequency at 1.075 V toward the curve's 2 917 MHz.
