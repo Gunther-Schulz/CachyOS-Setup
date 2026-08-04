@@ -246,8 +246,8 @@ for mv in $ANCHORS; do
   fi
 
   "$NVCURVE" write --reset >/dev/null 2>&1
-  if [ -z "$BEST_AT_ANCHOR" ]; then
-    say "  ${mv} mV holds nothing at or above ${FLOOR} MHz — this voltage is too low."
+  if [ -z "$BEST_AT_ANCHOR" ] || [ "$BEST_AT_ANCHOR" -lt "$FLOOR" ]; then
+    say "  ${mv} mV holds nothing at or above ${FLOOR} MHz (best: ${BEST_AT_ANCHOR:-none}) — too low."
     say "  Ending the sweep; lower anchors can only be worse."
     break
   fi
@@ -266,18 +266,44 @@ done
 # Screening rungs are deliberately short — instability at the edge is probabilistic, so
 # a short pass is a SCREEN, not proof. The pair that survives screening earns one long
 # soak before it is recommended.
-WIN=$(awk -F'\t' '$2=="FINISHED" && $3=="PASS" && $1!="stock"{print $1}' "$STATE" | tail -1)
-if [ -n "$WIN" ] && [ "$CONFIRM" -gt "$PASSES" ]; then
-  wmv=${WIN%%mV/*}; wmhz=${WIN##*/}
+# Pick the best passing pair by the actual criterion: highest target clock wins, and at
+# equal clock the LOWER anchor wins (same speed, less voltage). `tail -1` previously took
+# whatever was recorded last — the lowest anchor's result, typically the slowest setting.
+WIN=$(awk -F'\t' '$2=="FINISHED" && $3=="PASS" && $1!="stock" && $1 !~ /confirm/ {print $1}' "$STATE" \
+      | awk -F'mV/' '{print $2"\t"$1}' | sort -k1,1nr -k2,2n | head -1 \
+      | awk -F'\t' '{print $2"mV/"$1}')
+
+# Confirm the setting that will actually be USED — one rung below the maximum, per the
+# back-off rule — not the maximum itself. Confirming a setting you intend to abandon
+# proves nothing about the one you will run.
+if [ -n "$WIN" ]; then
+  wmv=${WIN%%mV/*}; wmax=${WIN##*/}
+  wmhz=$(echo "$CLOCK_LIST" | tr ' ' '\n' | sort -n | awk -v m="$wmax" '$1<m{p=$1} END{print p+0}')
+  [ "${wmhz:-0}" -gt 0 ] || wmhz=$wmax     # nothing below it — confirm the max itself
   say ""
   say "───────────────────────────────────────────────"
-  say "CONFIRMING ${WIN} with $CONFIRM passes   ($(date +%H:%M:%S))"
-  if "$FLATTEN" --mv "$wmv" --mhz "$wmhz" >/dev/null 2>&1; then
-    PASSES=$CONFIRM
-    if run_rung "${WIN}-confirm"; then say "  ✓ CONFIRMED over $CONFIRM passes"
-    else say "  ✗ FAILED the long soak — screening was not enough. Back off a rung."; fi
+  say "Best passing pair: ${wmv} mV / ${wmax} MHz"
+  if [ "$wmhz" != "$wmax" ]; then
+    say "Confirming ONE RUNG BELOW it — ${wmv} mV / ${wmhz} MHz — because that is the"
+    say "setting the back-off rule says to run. Margin covers a warm day, a driver"
+    say "update, and aging; instability at the edge is probabilistic."
+  else
+    say "No rung below it in the tested set — confirming the maximum itself."
   fi
-  "$NVCURVE" write --reset >/dev/null 2>&1
+  if [ "$CONFIRM" -gt "$PASSES" ]; then
+    say "CONFIRMING ${wmv} mV / ${wmhz} MHz with $CONFIRM passes   ($(date +%H:%M:%S))"
+    if "$FLATTEN" --mv "$wmv" --mhz "$wmhz" >/dev/null 2>&1; then
+      PASSES=$CONFIRM
+      if run_rung "${wmv}mV/${wmhz}-confirm"; then
+        say "  ✓ CONFIRMED over $CONFIRM passes — this is the setting to keep."
+        say "     sudo $FLATTEN --mv $wmv --mhz $wmhz"
+        say "     sudo $NVCURVE profile save quiet"
+      else
+        say "  ✗ FAILED the long soak. Screening was not enough evidence — drop another rung."
+      fi
+    fi
+    "$NVCURVE" write --reset >/dev/null 2>&1
+  fi
 fi
 
 say ""
@@ -286,8 +312,7 @@ say "SWEEP COMPLETE — $(date +%H:%M:%S)"
 say ""
 "$HERE/gpu-ladder-report.sh" --state "$STATE" 2>&1 | tee -a "${STATE%.tsv}.log"
 say ""
-say "The report above names the best pair. Apply it, then back off one rung for margin:"
-say "  sudo $FLATTEN --mv <anchor> --mhz <clock>"
-say "  sudo $NVCURVE profile save quiet"
+say "The confirmed pair above is the one to keep — the back-off rung has already been"
+say "applied and soaked, so no further adjustment is needed."
 say ""
 say "Curve reset to stock. Nothing persists across a reboot."
