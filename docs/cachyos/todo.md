@@ -375,7 +375,28 @@
   It also auto-picks context/batch/layers and adds model-load churn, which is variance we
   would be fighting. `llama-bench` reports `pp` and `tg` separately with N repetitions and
   stddev, pins every parameter, has no sampling variance, and emits CSV/JSON.
-  `extra/llama-cpp` provides it. **No re-download needed — ollama's blobs are plain GGUF**
+  ✅ `extra/llama-cpp` installed 2026-08-05 (`b10221-1.1`, provides `/usr/bin/llama-bench`).
+
+  ⚠️ **It silently ran on VULKAN, not CUDA — check the backend before trusting a number.**
+  `ggml 0.17.0` ships `libggml-cuda.so`, but the library fails to load because
+  **`libnccl.so.2` is missing**, and ggml falls back to Vulkan without an error. ollama
+  runs CUDA, so a Vulkan measurement would be a *different backend* than the workload it
+  claims to represent — the same proxy error this whole item exists to avoid. Fix and
+  verify:
+  ```fish
+  sudo pacman -S nccl
+  llama-bench --list-devices     # must show CUDA0, not Vulkan0
+  ```
+  Diagnose a silent fallback with `ldd /usr/lib/ggml/libggml-cuda.so | grep 'not found'`.
+
+  ⚠️ **Arch's build prints `asserts enabled, performance may be affected`.** Absolute
+  throughput therefore does **not** represent real inference speed — these numbers are for
+  **stock-vs-setting ratios only**, where constant overhead cancels. If the overhead proves
+  noisy rather than constant it will show up as a wide stddev, and a source build without
+  `-DGGML_ASSERT` becomes necessary. Do not quote llama-bench figures as this machine's
+  inference performance.
+
+  **No re-download needed — ollama's blobs are plain GGUF**
   (verified 2026-08-05, magic `GGUF`), so point `-m` straight at one:
 
   ```fish
