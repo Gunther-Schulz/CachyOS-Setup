@@ -188,11 +188,22 @@
 
   ### Three tools, each for what it is actually good at — run in this order
 
-  | Tool | Power reached | What it detects |
-  |---|---|---|
-  | **`gpu_burn`** | **575 W, capped** | **silent compute errors** — prints `GPU 0: OK` or `FAULTY`. **The gate.** |
-  | **FurMark Vulkan** | **565 W, capped** | visual artifacts, and it renders to screen so it can be watched |
-  | GravityMark RT | **not capped** (~338 W in raster) | performance score against the 78 906 baseline |
+  **They are not redundant — each exercises a DIFFERENT block of the die.** `gpu_burn` is
+  cuBLAS matrix multiplication: SMs and VRAM only. It never touches the rasteriser, ROPs,
+  texture units or RT cores, so on its own it validates a path this machine barely uses
+  while leaving the gaming path untested.
+
+  | Tool | Exercises | Power | Failure appears as |
+  |---|---|---|---|
+  | **`gpu_burn`** | SMs, VRAM, compute | **575 W, capped** | **`GPU 0: FAULTY`** — the only detector for *silent* wrongness |
+  | **FurMark Vulkan** | shaders, ROPs, texture units | **565 W, capped** | visual artifacts — renders to screen, watchable |
+  | **GravityMark RT** | geometry + **RT cores** | not capped (~338 W raster) | score drop vs the 78 906 baseline, artifacts |
+  | **A real game, ~1 h** | all of it, under real conditions | varies | crash, artifacts, `Xid` |
+
+  Visual inspection is not a *better* detector than `gpu_burn` — it is the detector for a
+  block `gpu_burn` cannot reach. In the graphics path errors are normally visible or crash
+  outright, so watching suffices there; it is simply blind to compute, which is why the
+  tool with no picture stays in the rotation.
 
   ```fish
   gpu_burn 300                                                    # must end "GPU 0: OK"
@@ -209,7 +220,9 @@
 
   **Failure signature:** `FAULTY`, a visual artifact, or any `Xid` in the journal → back off one step. Instability appears **under load, not at idle** ([nvidia/5090-thermals.md](nvidia/5090-thermals.md)), which is what makes this deterministically testable rather than a wait-and-see.
 
-  **Persist only after a step survives all three**, and record which offset was proven before installing the service.
+  **The real gate is a game, not a benchmark.** Once all three synthetic tests pass, ~1 h of actual play (Marvel Rivals is installed) is the test that decides — mixed, bursty, real conditions that synthetic loops do not reproduce, on the exact path this machine is used for. Check `journalctl -b | grep -i xid` afterwards.
+
+  **Persist only after a step survives all three synthetic tests AND a real gaming session**, and record which offset was proven before installing the service.
 
   **Later refinement:** the global offset is the blunt instrument. The precise undervolt — pick a voltage point, raise its frequency, flatten the points above so the card never exceeds that voltage — needs the web UI's flatten tool, and preserves idle behaviour by leaving the low points untouched. Worth doing once these steps have established how much headroom the silicon has.
 
