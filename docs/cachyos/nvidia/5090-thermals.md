@@ -451,6 +451,39 @@ scene at 4K. **The controlled comparison is FurMark OpenGL vs FurMark Vulkan**, 
 tool and scene, API as the only variable. That run is what would attribute the
 Superposition score deficit to the OpenGL path rather than to something else.
 
+## ✅ VERDICT 2026-08-04: this card performs NORMALLY. The 33 % deficit was an artefact.
+
+**GravityMark 1.89, measured on this machine: score 85 647, 512.8 FPS** — Vulkan, Linux,
+2560×1440, Temporal AA, 200 000 asteroids, Rasterization, single GPU, 167 s.
+
+Compared against the leaderboard **filtered to identical settings** on both platforms
+(filters are client-side JS — `set_platform()`, `set_api()`, `set_asteroids()` etc., so a
+browser is required; the resulting URL is
+`?api=vk&os=lnx&mode=one&gpu=nvidia`):
+
+| Reference group (RTX 5090, single GPU, Vulkan, 2K, 200 K) | entries | this machine sits at |
+|---|---|---|
+| **Windows** — 87 637 / 87 013 / 86 946 / 83 093 / 82 887 | 5 | **98.5 % of median, 97.7 % of top** |
+| **Linux** — 98 186 / 97 764 / 91 487 / 89 617 / 82 037 / 76 610 | 6 | **95.6 % of median, 87.2 % of top** — would rank 5th of 7 |
+
+**Level with Windows, mid-pack on Linux.** Nothing here indicates a hardware, driver or
+configuration fault. The Superposition result was never evidence of one.
+
+Two details worth keeping:
+- The **#2 Linux entry (97 764) runs the same Ryzen 9 9950X3D**, so the ~12 % gap to it is
+  not a CPU difference. Candidates: cooling (this card loses 2.5 MHz/°C — see above),
+  background load, session compositing, or plain variance across six samples.
+- A **CachyOS entry scored 82 037 — below this machine.** Same distro, lower result.
+
+⚠️ **Sample sizes are tiny (6 and 5).** These are percentile positions in a handful of
+self-submitted results, not a distribution. They rule out a large deficit; they cannot
+resolve a few percent.
+
+**And Linux is not behind here — it is ahead.** The top Linux score (98 186) exceeds the
+top Windows score (87 637) by ~12 %. Combined with Basemark showing Linux+Vulkan above
+Windows+DX12, the premise that a Linux 5090 should trail Windows has no support in either
+corpus that labels OS and API.
+
 ### Methodology: a benchmark without a comparison corpus is a number, not a measurement
 
 The 33 % deficit was only visible because a leaderboard existed. **A score in isolation
