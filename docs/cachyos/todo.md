@@ -277,6 +277,21 @@
   On resume it will ask about the unfinished `950mV/3100` rung — **answer `y`, it did crash
   the machine.**
 
+  **Tooling — READY, both surfaced 2026-08-04 while repairing a resume by hand:**
+
+  - **`gpu-uv-explore.sh` needs a `--state <file>` flag.** `--resume` takes the newest
+    `explore-*.tsv` without a `SWEEP COMPLETE` line, so a short later run outranks the long
+    sweep holding the real history — observed restoring a `+263` proven delta where the
+    full ladder gives `+428`, which starts every lower anchor too low. Worked around twice
+    by hand-editing state, which is the signal it belongs in the tool. *Done when:* the
+    flag selects the file, `--resume` without it keeps today's behaviour, and a test case
+    proves the predictor rebuilds from the named file and not the newest one.
+  - **Aborting a run writes `SWEEP COMPLETE`**, so the next `--resume` says *"no unfinished
+    run to resume"* and the operator must hand-delete the line. A Ctrl-C is not a completed
+    sweep. *Done when:* the terminator distinguishes finished from aborted (or is written
+    only on the normal exit path) and `--resume` picks up an aborted run untouched. Note
+    the trap also fires on the normal path — check which before changing it.
+
   **Remaining (ready), in order:**
   1. **Finish the ladder at 900 and 875 mV** (above) — the open half of the sweep.
   2. **12-pass confirmation** of whatever wins.

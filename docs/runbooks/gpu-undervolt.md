@@ -68,6 +68,37 @@ sudo ./tools/gpu-uv-explore.sh --resume       # continue, re-running nothing alr
 ./tools/gpu-ladder-report.sh --state ~/bench/explore-latest.tsv    # progress, NO root
 ```
 
+### ⚠️ `--resume` picks the NEWEST state file, which may not be the richest one
+
+There is no `--state` flag on the explorer. `--resume` takes the newest `explore-*.tsv`
+lacking a `SWEEP COMPLETE` line — so a short later run outranks the long sweep that holds
+the real history. The predictor is rebuilt from whatever file it picks, and a thin file
+yields a **small proven delta**, which makes every lower anchor start too low and creep.
+Observed: a resume restored `+263` where the full ladder gives `+428`.
+
+**Read the two lines it prints before walking away** — they are the whole check:
+
+```
+resuming: /home/g/bench/explore-state.tsv
+restored from the previous run: ceiling 3100 MHz, best proven delta +428 MHz
+```
+
+Wrong file → re-open the right one by deleting only its terminator (this also makes it
+newest by mtime, which is what `--resume` sorts on):
+
+```fish
+sudo cp ~/bench/explore-state.tsv ~/bench/explore-state.tsv.bak
+sudo sed -i '/^SWEEP/d' ~/bench/explore-state.tsv
+```
+
+Nothing is fabricated by that — the passes and failures in the file are real results.
+**Never hand-write rungs that were not run**; the predictor and the proven-delta cap are
+computed from this file, and an invented PASS raises the cap over a rung the silicon
+never held.
+
+Aborting a run writes `SWEEP COMPLETE`, which is why the next `--resume` reports
+*"no unfinished run to resume"*.
+
 `--screen 1` puts the benchmark on a second monitor so the primary stays usable. **Tabbing
 away does not disturb it** — the compositor never unmaps a fullscreen window, and the soak
 now verifies this per run and says so.

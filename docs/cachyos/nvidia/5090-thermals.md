@@ -849,6 +849,44 @@ evidence, and at the top of the curve it actively lies.
 Method note worth keeping: **utilization + loaded-sample count is the cheap test for whether
 a soak was disturbed.** An interrupted run shows a low-utilization tail; this one does not.
 
+### 🔬 Open hypothesis: is the TOOL the limit at low anchors, or the silicon?
+
+Stated so it can be killed. The FE guide's author claims his 0.890 V ceiling is the
+**±1000 MHz-per-curve-point cap** that Afterburner and `nvcurve` both impose — that he
+ran out of *tool*, not out of *card*, and that NVIDIA tunes the low-voltage curve points
+for idle efficiency rather than at the silicon limit. Two AIB owners at 0.895–0.9 V /
+2900 MHz are consistent with it.
+
+**The anchor bases on this card**, read from its own curve — every delta below is
+`target − base`, and all the ladder arithmetic depends on these four numbers:
+
+| anchor | 1000 mV | 950 mV | 925 mV | 900 mV |
+|---|---|---|---|---|
+| base MHz | 2 737 | 2 572 | 2 347 | 2 002 |
+
+⚠️ **The hypothesis is already partly refuted here — and by our own data.** At 900 mV,
+`3000 MHz` is a delta of **+998**, comfortably inside the ±1000 tool cap. It was applied
+on 2026-08-04 and the GPU faulted (Xid 38 → 109 → 154 PF FLR, compositor killed). So on
+this card the tool cap is **not** what binds at 900 mV; something below +998 does.
+
+What is actually established is a **bracket**, and it is wide:
+
+| delta at the anchor | outcome |
+|---|---|
+| **+435** (`1000mV/3100`, base 2737 → +363; `950mV/3000`, base 2572 → +428) | ✅ passed |
+| **+825** (the guide's `890mV/2827` target on this card's base) | ❓ **untested** |
+| **+998** (`900mV/3000`) | ❌ faulted |
+
+So the useful form of the question is not "does the tool bind?" — it doesn't — but
+**where between +428 and +998 this card stops**. That is what the 925/900/890 sweep
+measures, and it is worth measuring because the *distance* is large: the whole span
+between a proven-good and a known-bad setting is unexplored.
+
+**What would refute the conservative-curve reading outright:** rungs failing at low
+anchors close to the already-proven delta — `900mV/2400` (+398) or `900mV/2500` (+498)
+not passing. If those fail, the low-voltage points are not conservative on this sample and
+the anchor walk should stop at 925 mV.
+
 ### The complete GPU crash record — and what it says about which load to test with
 
 Every Xid this machine has ever logged, whole journal, all four retained boots
