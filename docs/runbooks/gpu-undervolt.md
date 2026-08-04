@@ -116,9 +116,11 @@ now verifies this per run and says so. Two caveats, both learned in use:
   screen assignment, opens as a plain window on the terminal's monitor, and anything can
   cover it — which is also what quietly keeps FurMark runs on one monitor, satisfying
   the same-monitor consistency rule, for as long as the terminal stays where it is.)
-- **Pick one monitor per ladder and keep it** — scores are only comparable within it.
-  Moving mid-ladder puts a boundary through the within-anchor comparisons the stretch
-  detector relies on.
+- **Monitor choice matters only when the render size follows the window.** FurMark
+  renders windowed at window size, so its monitor/size must stay fixed across compared
+  runs. GravityMark's resolution is pinned by `-width`/`-height` and it runs fullscreen
+  uncapped — same-resolution monitors do identical GPU work, and PASS/FAIL, Xid and
+  power never depend on the monitor at all. Moving it mid-ladder is fine.
 
 ### Stopping a run when the benchmark covers the terminal
 

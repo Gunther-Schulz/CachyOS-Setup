@@ -272,9 +272,12 @@
   ```
 
   `--screen 1` lands on the **Asus** on this rig (GravityMark's own enumeration; the
-  Dell's index is untested) — always-on-top, so keep the terminal on the Dell. **Stay on
-  the Asus for the rest of this ladder**: every recorded rung ran there, and the stretch
-  detector compares within-anchor across rungs. To stop mid-run without reaching the
+  Dell's index is untested — find it with a ten-second manual `GravityMark.x64 -screen 0`
+  and close it). The window is always-on-top on its monitor, so put it on whichever
+  monitor the terminal is NOT on — **switching monitors is safe for the scores**: the
+  soak pins the render resolution by flag and both monitors are the same resolution, so
+  the GPU does identical work either way (the same-monitor rule is FurMark's
+  windowed-mode mechanism; it does not transfer). To stop mid-run without reaching the
   terminal: `pkill GravityMark; sudo pkill -INT -f gpu-uv-explore` (runbook has the why;
   closing the benchmark window alone does NOT stop the sweep).
 
