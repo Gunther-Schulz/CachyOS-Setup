@@ -481,8 +481,20 @@ browser is required; the resulting URL is
 | **Windows** — 87 637 / 87 013 / 86 946 / 83 093 / 82 887 | 5 | **98.5 % of median, 97.7 % of top** |
 | **Linux** — 98 186 / 97 764 / 91 487 / 89 617 / 82 037 / 76 610 | 6 | **95.6 % of median, 87.2 % of top** — would rank 5th of 7 |
 
-**Level with Windows, mid-pack on Linux.** Nothing here indicates a hardware, driver or
-configuration fault. The Superposition result was never evidence of one.
+**Ray-tracing run, same settings plus `render=rt`: score 78 906, 472.5 FPS.** Relative
+position is *better* than in rasterization:
+
+| Reference group (RTX 5090, single GPU, **Vulkan RT**, 2K, 200 K) | entries | this machine |
+|---|---|---|
+| **Linux** — 88 908 / **78 906** / 76 274 / 72 606 / 71 999 | 4 + this | **2nd, 108.7 % of median**, 88.8 % of top |
+| **Windows** — 90 866 / 77 542 | 2 | **101.8 % of median**, 86.8 % of top |
+
+**Above median on both platforms under ray tracing**, against 5th-of-7 in rasterization —
+so if anything this card is relatively stronger on the RT path. (Note `cachyos-test123`
+at 76 274 again sits below this machine, on the same distro.)
+
+**Level with Windows, mid-pack-to-above on Linux.** Nothing here indicates a hardware,
+driver or configuration fault. The Superposition result was never evidence of one.
 
 Two details worth keeping:
 - The **#2 Linux entry (97 764) runs the same Ryzen 9 9950X3D**, so the ~12 % gap to it is
