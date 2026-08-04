@@ -115,6 +115,47 @@ is high-risk, and the measured 8.8 °C delta says there is nothing to gain — t
 what a good mount looks like. The 5070 Ti repaste story is about a card whose hotspot
 hit 107 °C; this one does not.
 
+## GPU undervolt vs CPU Curve Optimizer — different failure modes
+
+**GPU undervolting does not carry the idle-crash risk that CPU CO does.** The
+mechanisms differ in where they bite:
+
+| | CPU Curve Optimizer | GPU undervolt |
+|---|---|---|
+| Fails at | **idle / light load** — one core boosting to max frequency at reduced voltage | **under load** — high clocks are where the margin disappears |
+| Symptom | spontaneous reboot, freeze, WHEA | driver reset, `Xid` in the journal, artifacts, application crash |
+| Recovery | reboot, possibly CMOS clear | usually the app dies; revert with one command |
+| Revert | BIOS visit | `nvidia-settings` / `nvidia-smi`, live, no reboot |
+
+At idle the GPU sits at low clocks and low voltage with enormous margin, so an
+aggressive offset simply never gets exercised there. That makes it **deterministically
+testable**: run the load, watch for artifacts and
+`journalctl -b | grep -i xid`. No waiting around for a random failure during work.
+
+⚠️ **Caveat:** severe instability can still hard-hang the machine (e.g. Xid 79,
+"GPU has fallen off the bus"). Rare at modest offsets, and it happens under load —
+i.e. while testing, not while working.
+
+### The catch: on Linux, "undervolt" is built FROM the power limit
+
+NVIDIA does not expose a V/F curve editor on Linux — that is Afterburner on Windows.
+What exists here (confirmed on driver 610.43.03):
+
+- `GPUGraphicsClockOffsetAllPerformanceLevels`, range **−1000 … +1000** MHz
+- `nvidia-smi -pl`, range **400–600 W**
+
+The standard Linux undervolt is **both together**: cap power so the card selects a
+lower point on its V/F curve, then apply a **positive** clock offset to recover the
+clocks lost at that lower voltage. Net effect — near the original performance at
+meaningfully less voltage and heat.
+
+**A power-limit cut alone is not an undervolt**, it is just less power, and it costs
+performance proportionally. **A positive offset alone is an overclock** and makes heat
+worse. Declining the power limit therefore removes the mechanism rather than avoiding a
+downside; what remains is a *negative* clock offset, which lowers voltage only by
+running the card slower — strictly worse than the two-part technique at the same
+performance.
+
 ## Open: case fans are driven by CPU temperature only
 
 Under a GPU-only load the CPU stays idle, so a CPU-temperature fan curve has no
@@ -124,10 +165,17 @@ machine: with the GPU at 575 W and the CPU idle, CPU Tctl rose from ~51 °C to
 but only *after* the GPU heat had soaked into the CPU — an indirect, lagging response
 to the wrong sensor.
 
-`coolercontrol` can drive a curve from GPU temperature, or from a CPU/GPU mix. Worth
-doing on mechanism alone; it costs nothing and targets the measured lag. ⚠️ Basis for
-the general recommendation is community consensus — no controlled study was found —
-but the specific symptom above is measured here, not inherited from a forum.
+✅ **Confirmed available (2026-08-04):** the running `coolercontrold` already enumerates
+the card as its own device — `GPU  NVIDIA GeForce RTX 5090` — alongside `CPU AMD Ryzen
+9 9950X3D`, `Hwmon nct6799` (the fan channels), the NVMe drives and the DIMMs. So GPU
+temperature is selectable as a fan-curve source today; nothing needs installing. A
+**Mix profile** (max of CPU and GPU temperature) is the shape that fits: it keeps the
+existing CPU behaviour and adds a GPU trigger, rather than trading one blind spot for
+the other. Queried via the daemon's API at `localhost:11987`, per
+[fan-control/coolercontrol-labels.md](../../../fan-control/coolercontrol-labels.md).
+
+⚠️ Basis for the general recommendation is community consensus — no controlled study
+was found — but the specific symptom above is measured here, not inherited from a forum.
 
 ## Verify
 
