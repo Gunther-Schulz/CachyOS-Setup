@@ -60,23 +60,31 @@
 - **Desktop:** consider undervolting the RTX 5090 — same philosophy as the CPU item: the last ~100 W of its 575 W budget buys a few percent. Linux reality check first: nvidia-smi/NVML expose **power-limit** and **clock-offset** controls, but true V/F-curve undervolting (the MSI-Afterburner method) is not directly exposed on Linux — the standard technique is the proxy: `nvidia-smi -pl <W>` (e.g. 450–480 W, ~80–85%) **plus** a positive core-clock offset via `nvidia-settings`/nvml (`+150…+300 MHz`), which shifts the effective V/F point the same direction. On the 5090, community results cluster around ~90% performance at ~70–75% power. Test protocol mirrors the CPU one: baseline benchmark first (same mangohud frametime logging + a sustained load like a long render/`gravitymark`), turbostat-equivalent = `nvidia-smi dmon -s pucvmet -o DT -f gpu-log.csv` (**corrected 2026-08-04, verified live** — this doc previously said `-s pucT`, which is simply invalid syntax: there is no capital-`T` metric, the valid `-s` letters are `p u c v m e t n` and lowercase `t` means PCIe *throughput*, not temperature. It failed with "Failed to find any metric to display" and was wrongly recorded here as a card/driver limitation. `-o DT` is what adds the Date/Time columns. The `mtemp` column reads `-` — use `nvidia-gpu-sensors` for memory temp, see the item below); stability = hours of a demanding game/render without artifacts or driver resets (`journalctl -b | grep -i xid` — any Xid error = back off the offset). Sequencing: independent of the board-clearance chain (GPU wasn't in the surge path), but do it BEFORE fan curves for the same reason as the CPU — curves get tuned once against the final heat output of both chips. (curves tuned against pre-ECO heat output would all be wrong afterward; tune once against the final thermal envelope). Assets already in repo: `fan-control/` (coolercontrol scripts + channel labels). Approach: with 105 W ECO + CO settled, log temps under (a) idle, (b) gaming-typical 60–90 W, (c) all-core 105 W; then set curves for silence at (a)/(b) and acceptable acoustics at (c) — the X3D cache die tolerates up to ~89 °C Tjmax, so target quiet-first, not cool-first.
 - **Desktop — fans surge under LIGHT load, not heavy. Keep ECO Mode; the fix is Curve Optimizer + fan hysteresis.**
 
-  **Measured on this machine 2026-08-04 — the counter-intuitive result is real:**
+  **Measured on this machine 2026-08-04 — Tctl peaks at PARTIAL load, not full load.** Thread-count sweep, `--cpu N --cpu-method fft`, 35 s each from a 25 s-cooled start:
 
-  | Load | Package power | **Tctl peak** | Tccd1 | Tccd2 |
-  |---|---|---|---|---|
-  | idle | — | 51.2 °C | 39.5 | 38.5 |
-  | **single-thread** (`--cpu 1 fft`) | ~55 W | **68.5 °C** | 51.0 | **68.6** |
-  | **all-core** (`--matrix 0`, ECO) | ~142 W | **62.5 °C** | 61.6 | 62.5 |
+  | Threads | **Tctl peak** | Tccd1 | Tccd2 |
+  |---|---|---|---|
+  | idle | 51.2 °C | 39.5 | 38.5 |
+  | 1 | 68.2 °C | 67.4 | 68.6 |
+  | 2 | 70.2 °C | 69.8 | 71.5 |
+  | 3 | 72.4 °C | 69.8 | 73.0 |
+  | 4 | 75.6 °C | 70.8 | 76.5 |
+  | **8** | **79.8 °C** ← **hottest** | 74.6 | 80.0 |
+  | 32 | 71.4 °C | 62.1 | 74.9 |
 
-  **One thread runs the chip 6 °C hotter than all sixteen, at 2.6× less power.** Mechanism: single-core boost applies maximum frequency *and* maximum voltage to one core, concentrating power in a tiny area the IHS cannot drain quickly. All-core under ECO runs 4 325 MHz at much lower per-core voltage, spread across sixteen cores — easy for the cooler. The board's fan curve follows **Tctl**, so it ramps *harder* for a single-threaded task than for a full all-core load. Typical desktop use is a stream of exactly those short single-core bursts, which is the surging.
+  **Temperature rises monotonically from 1 to 8 threads, then falls at 32 — and 8 threads is 8.4 °C hotter than all 32.** Mechanism: below the power cap, the boost algorithm holds near-maximum frequency *and* voltage, so each added core adds heat at undiminished voltage. At 32 threads the **ECO 105 W cap binds** (142 W PPT, 4 325 MHz), forcing voltage down across the board — which is why full load is now the *quiet* case. The board's fan curve follows **Tctl**, so it ramps hardest in the partial-load band, and ordinary desktop work — a compile, a browser, a game's worker threads — lives exactly there.
+
+  ⚠️ **Caveat: 35 s is not thermal steady state**, and the high-power cases have more thermal mass to charge, so the 8- and 32-thread figures are understated more than the 1–4 thread ones. The 1→8 rise is robust; the exact size of the 8→32 drop is not. A 5-minute run at 8 and at 32 threads would settle it if the fan curve needs the precise numbers.
 
   **Decision — do NOT disable ECO Mode.** It would keep the problem and discard the benefit:
   - ECO does not touch single-core boost (measured: +0.4 % throughput, 5 360 vs 5 368 MHz), so **the surging would be identical without it**.
   - Removing it takes all-core back to 199 W, and the quiet heavy-load behaviour observed during the benchmark is the one acoustic *improvement* actually gained.
 
   **What actually targets the surging, in order:**
-  1. **Curve Optimizer, negative.** It lowers voltage at the boost point, and the single-core case is voltage-driven — power density scales with V². This is the on-target fix and it is already planned (section C).
+  1. **Curve Optimizer, negative.** It lowers voltage across the boost curve, and the whole 1–8 thread band is voltage-driven with the power cap not yet binding — power density scales with V². CO acts precisely where the heat is and ECO cannot reach. This is the on-target fix, already planned (section C); the sweep above promotes it from an efficiency nicety to **the** answer for the noise complaint.
   2. **Fan-curve hysteresis / response delay** in `coolercontrol 4.3.1-2` (installed; `fan-control/` holds the scripts and channel labels), plus a speed floor so it does not fully drop and re-surge. User space, not Q-Fan — operator preference and the pre-existing plan.
+
+  **Design the curve for the partial-load band, not for all-core.** The usual instinct is to set the knee against a full-load stress test; here that tunes against the *coolest* heavy case and leaves the fans free to scream at ~80 °C during a compile. The knee belongs around the 4–8 thread numbers above.
 
   ❌ **Retracted: "drive the curve from a CCD sensor rather than Tctl."** Measured as useless — under single-thread load Tctl 68.5 vs Tccd2 68.6, i.e. identical. Tctl tracks the hottest CCD closely under load, so switching sensor buys no smoothing. Hysteresis is the lever, not sensor choice.
 
