@@ -474,6 +474,37 @@ CLOCK_LIST=$(echo "$CLOCKS" | tr ' ' '\n' | sort -n | tr '\n' ' ')
 CEILING=""          # highest clock known to pass at the previous (higher) anchor
 MAX_DELTA=0         # largest (target - base) that has passed anywhere — the predictor
 
+# ON RESUME, REBUILD THE PREDICTOR FROM THE STATE FILE.
+#
+# These two are learned by WALKING anchors, so a resume that does not re-walk the earlier
+# anchors starts with both empty — and empty CEILING selects the FIRST-ANCHOR branch
+# below, which climbs from the bottom of the clock list until something FAILS. That is the
+# branch that finds a limit by crashing into it. It is the correct behaviour for a genuine
+# first anchor and the wrong behaviour here, where higher anchors already established what
+# the silicon holds.
+#
+# Concretely, resuming `--anchors "900 875"` after 1000 and 950 mV completed: without this,
+# 900 mV would restart at the lowest clock and climb rung by rung — ~11 min each — into a
+# region a hard lock has already been seen in. With it, 900 mV starts at its own base plus
+# the largest delta that has actually passed, which is the whole reason the two-axis walk
+# is cheaper than a grid.
+if [ "$RESUME" = 1 ] && [ "${#ANCHOR_MAX[@]}" -gt 0 ]; then
+  for a in $(printf '%s\n' "${!ANCHOR_MAX[@]}" | sort -rn); do
+    m=${ANCHOR_MAX[$a]}
+    [ -z "$CEILING" ] && CEILING=$m        # highest completed anchor bounds the lower ones
+    b=$(base_at "$a")
+    if [ "${b:-0}" -gt 0 ]; then
+      d=$(( m - b ))
+      [ "$d" -gt "$MAX_DELTA" ] && MAX_DELTA=$d
+    fi
+  done
+  if [ -n "$CEILING" ]; then
+    say "restored from the previous run: ceiling ${CEILING} MHz, best proven delta +${MAX_DELTA} MHz"
+    say "  (without these a resume would restart the climb from the bottom and find each"
+    say "   anchor's limit by crashing into it)"
+  fi
+fi
+
 for mv in $ANCHORS; do
   say ""
   say "───────────────────────────────────────────────"
