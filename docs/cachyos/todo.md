@@ -211,12 +211,27 @@
 
      **What this does and does not cost.** The `Memory errors` table in `ras-mc-ctl --errors` is dead here, so **its "No Memory errors" line carries no information — never quote it as evidence of health.** DRAM corrected errors on Zen are delivered as **MCA events from the UMC banks**, decoded in-kernel (`MCE: In-kernel MCE decoding enabled`) with `amd_atl` (present: `/lib/modules/…/drivers/ras/amd/atl/amd_atl.ko.zst`) translating a normalized address back to a DIMM — that path is independent of EDAC. So memory-error *detection* is expected to survive; what is lost is the per-DIMM EDAC table.
 
-     ⚠️ **That last paragraph is reasoning, not a measurement — the MCE lane has not been shown live on a real error.** Confirm the shape of the instrument before trusting it:
-     ```fish
-     sudo ras-mc-ctl --summary
-     sudo ras-mc-ctl --errors | head -40
+     ⚠️ **That last paragraph is reasoning, not a measurement — the MCE lane has not been shown live on a real error.**
+
+     **`ras-mc-ctl --summary` cannot answer this, and 2026-08-04 proved it can't.** Run on this machine it returns:
      ```
-     Read which sections actually exist and are populated. An empty `mce_record` table is still an unproven negative, but a *present* one at least proves the lane is wired.
+     No Memory errors.      ← lane is DEFINITIVELY DEAD (no EDAC MC exists)
+     No PCIe AER errors.
+     No ARM processor errors.
+     No Extlog errors.
+     No devlink errors.
+     No MCE errors.         ← lane believed live — reported IDENTICALLY
+     ```
+     A lane known to be dead and a lane believed live produce the same sentence. That makes the whole summary worthless as evidence of liveness, for every lane — including the ones that look reassuring. (`No ARM processor errors` on an x86 machine is the same joke, more obviously.)
+
+     **The only thing that settles it is making the lane go red on a planted error.** `mce-inject` is available: the kernel module ships with this kernel (`/lib/modules/…/arch/x86/kernel/cpu/mce/mce-inject.ko.zst`), the userspace tool is AUR-only and **not currently installed** (nothing owns `/usr/bin/mce-inject`).
+     ```fish
+     yay -S mce-inject
+     pacman -Ql mce-inject | grep -iE 'test|example|share'   # shipped sample .mce files
+     ```
+     Then inject a **corrected** (CE) error and confirm it appears in `ras-mc-ctl --errors`. ⚠️ **Corrected only** — injecting an uncorrected/fatal status word panics the machine on purpose. The exact AMD UMC status-word encoding should be taken from the package's own sample files, not hand-written from memory.
+
+     Until that has gone red once, treat **every** clean `ras-mc-ctl` result in this repo — including the 2026-08-03 baseline above — as *unproven*, not as evidence of health.
 
   **C — CPU tuning. Paths, per the ASUS 800-series BIOS manual (E25269):**
   - **Curve Optimizer — path CONFIRMED from the live screen 2026-08-04** (photographed), not from the manual: `Advanced → AMD Overclocking → AMD Overclocking → Precision Boost Overdrive → Curve Optimizer`. Note `AMD Overclocking` appears **twice** in the breadcrumb; that is the real path.
