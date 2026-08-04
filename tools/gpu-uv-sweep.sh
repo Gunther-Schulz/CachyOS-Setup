@@ -93,6 +93,23 @@ reset_stock
 LAST_GOOD=0
 FAILED_AT=""
 
+# STOCK BASELINE FIRST. Without it the sweep produces offsets with nothing to compare
+# them against — "63,375 GFLOP/s at +50" means nothing unless stock is known. Same
+# gate, same duration, so the comparison is like-for-like.
+say "───────────────────────────────────────────────"
+say "BASELINE at stock (offset 0)   ($(date +%H:%M:%S))"
+"$GB" "$BURN" >"$OUT/burn-stock.log" 2>&1
+BASE=$(grep -oE '\(([0-9]+) Gflop/s\)' "$OUT/burn-stock.log" | grep -oE '[0-9]+' \
+       | sort -n | awk '{a[NR]=$1} END{if(NR) print a[int(NR/2)+0]; else print 0}')
+if ! grep -qi 'GPU 0: OK' "$OUT/burn-stock.log"; then
+  say "  ✗ STOCK FAILED gpu_burn — the card is unstable BEFORE any undervolt."
+  say "    Something else is wrong; do not sweep. Investigate first."
+  exit 1
+fi
+say "  ✓ stock OK   median ${BASE} GFLOP/s   $(sensors_line)"
+printf '0\tSTOCK\t%s\t%s\n' "$BASE" "$(sensors_line)" >> "$OUT/results.tsv"
+say ""
+
 for (( off=START; off<=MAX; off+=STEP )); do
   say "───────────────────────────────────────────────"
   say "TRYING +$off MHz   ($(date +%H:%M:%S))"
@@ -140,7 +157,8 @@ for (( off=START; off<=MAX; off+=STEP )); do
     FAILED_AT=$off; break
   fi
 
-  say "  ✓ +$off MHz PASSED   ${gflops} GFLOP/s   $(sensors_line)"
+  delta_pct=$(awk -v g="$gflops" -v b="$BASE" 'BEGIN{ if(b>0) printf "%+.1f%%", (g/b-1)*100; else print "n/a" }')
+  say "  ✓ +$off MHz PASSED   ${gflops} GFLOP/s (${delta_pct} vs stock)   $(sensors_line)"
   printf '%s\tPASS\t%s\t%s\n' "$off" "$gflops" "$(sensors_line)" >> "$OUT/results.tsv"
   LAST_GOOD=$off
 done
