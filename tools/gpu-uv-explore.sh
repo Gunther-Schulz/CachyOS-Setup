@@ -181,6 +181,28 @@ worth_continuing() {   # $1 = this rung, $2 = previous rung (may be empty)
   return 0
 }
 
+# FurMark probe — the POWER-CAPPED regime, which GravityMark never reaches.
+# GravityMark runs at ~371 W of 575 W, so lowering voltage costs clock there. FurMark
+# pins the cap and is forced to clock DOWN, so lowering voltage lets it clock UP within
+# the same budget. That is the regime where the forum user's +7.2% came from, and the
+# only way to see it on this card. Measured at baseline AND at the confirmed setting, in
+# the same session, so the pair is comparable.
+furmark_probe() {   # $1 = label for the log
+  command -v furmark >/dev/null || { say "  (furmark not installed — skipping the capped-regime probe)"; return; }
+  local f="${STATE%.tsv}.furmark-$1.txt"
+  ( for i in $(seq 1 40); do
+      nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits \
+        | tr -d ' ' | tr ',' ' '; sleep 3
+    done > "$f" ) &
+  local sp=$!
+  timeout -k 10 150 furmark --demo furmark-vk --width 2560 --height 1440 \
+      --max-time 120 --no-score-box >/dev/null 2>&1
+  kill $sp 2>/dev/null
+  awk '$2+0>300 {n++; c+=$1; w+=$2; if($3+0>t)t=$3+0}
+       END{ if(n) printf "  FurMark (power-capped): %.0f MHz  %.0f W  peak %.0f C\n", c/n, w/n, t
+            else print "  FurMark: no loaded samples" }' "$f" | tee -a "${STATE%.tsv}.log"
+}
+
 run_rung() {   # $1 = label
   printf '%s\tSTARTED\t\t%s\n' "$1" "$(date -Is)" >> "$STATE"; sync
   local out rc
@@ -235,8 +257,10 @@ else
 fi
 STOCK_CLK=$(clock_of stock); STOCK_SCORE=$(score_of stock)
 if [ "${STOCK_CLK:-0}" -gt 0 ]; then
-  say "  stock delivers ${STOCK_CLK} MHz, score ${STOCK_SCORE}, spread $(spread_of stock)%"
+  say "  stock delivers ${STOCK_CLK} MHz, score ${STOCK_SCORE}, spread $(spread_of stock)/1000"
   say "  — the crossover and plateau rules are measured against these"
+  say "  probing the power-capped regime at stock:"
+  furmark_probe stock
 else
   say "  ⚠️ could not read the stock clock; the crossover stop rule is DISABLED"
 fi
@@ -394,6 +418,12 @@ if [ -n "$WIN" ]; then
       PASSES=$CONFIRM
       if run_rung "${wmv}mV/${wmhz}-confirm"; then
         say "  ✓ CONFIRMED over $CONFIRM passes — this is the setting to keep."
+        say ""
+        say "  probing the power-capped regime at this setting (compare with stock above):"
+        "$FLATTEN" --mv "$wmv" --mhz "$wmhz" >/dev/null 2>&1
+        furmark_probe confirmed
+        say "  ^ THIS is where the gain shows as more CLOCK at the same 575 W, rather"
+        say "    than as less power. Both come from the same setting."
         say "     sudo $FLATTEN --mv $wmv --mhz $wmhz"
         say "     sudo $NVCURVE profile save quiet"
       else
