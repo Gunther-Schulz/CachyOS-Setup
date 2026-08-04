@@ -107,7 +107,34 @@ never held.
 
 `--screen 1` puts the benchmark on a second monitor so the primary stays usable. **Tabbing
 away does not disturb it** — the compositor never unmaps a fullscreen window, and the soak
-now verifies this per run and says so.
+now verifies this per run and says so. Two caveats, both learned in use:
+
+- **The index→monitor mapping is GravityMark's own enumeration**, not the desktop's —
+  which physical monitor "1" lands on is machine-specific, and the fullscreen window is
+  always-on-top on whichever monitor it gets. Put the terminal on the *other* monitor;
+  a terminal behind the benchmark is unreachable. (FurMark is the opposite: it takes no
+  screen assignment, opens as a plain window on the terminal's monitor, and anything can
+  cover it — which is also what quietly keeps FurMark runs on one monitor, satisfying
+  the same-monitor consistency rule, for as long as the terminal stays where it is.)
+- **Pick one monitor per ladder and keep it** — scores are only comparable within it.
+  Moving mid-ladder puts a boundary through the within-anchor comparisons the stretch
+  detector relies on.
+
+### Stopping a run when the benchmark covers the terminal
+
+**Closing the benchmark window does not stop the sweep.** The soak records the pass as
+"benchmark never ran" (INCONCLUSIVE — harmless, the rung re-runs on resume) and the
+explorer walks on to the next rung. Observed: a window close was followed within seconds
+by the sweep setting up the next anchor. The clean stop, from any terminal on any
+monitor:
+
+```fish
+pkill GravityMark; sudo pkill -INT -f gpu-uv-explore
+```
+
+(The benchmark runs as the user — no sudo; the explorer runs as root.) The pass aborts,
+the in-flight rung is recorded, the curve resets to stock, and the run stays resumable —
+same result as Ctrl-C in the launching terminal.
 
 The ladder (anchor voltages and target clocks) is **derived from the card's own V/F curve**
 and printed before the sweep starts. Override with `--anchors` / `--clocks` only if you

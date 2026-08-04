@@ -271,6 +271,13 @@
     --anchors "925 900 890" --clocks "2500 2600 2700 2800 2900 3000"
   ```
 
+  `--screen 1` lands on the **Asus** on this rig (GravityMark's own enumeration; the
+  Dell's index is untested) — always-on-top, so keep the terminal on the Dell. **Stay on
+  the Asus for the rest of this ladder**: every recorded rung ran there, and the stretch
+  detector compares within-anchor across rungs. To stop mid-run without reaching the
+  terminal: `pkill GravityMark; sudo pkill -INT -f gpu-uv-explore` (runbook has the why;
+  closing the benchmark window alone does NOT stop the sweep).
+
   Expect the finale's **score verdict to be WITHHELD**: the file's stock rung (76 896)
   is the depressed afternoon baseline — the same rung re-measured 82 244 that evening —
   and the report now refuses to rank against a reference the clocks contradict. That is
