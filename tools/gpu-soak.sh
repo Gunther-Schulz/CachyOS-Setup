@@ -150,32 +150,55 @@ say ""
 # libTellusim_x64.so sits beside the binary and is found via an empty rpath. Invoking
 # it by absolute path from anywhere else dies with "cannot open shared object file"
 # and exit 127, which is a LAUNCH failure and must never be read as instability.
-# Run the BENCHMARK as the invoking user even when the script is root for the offset
-# write. As root it would get HOME=/root (wrong config and cache location) and would
-# need the user's X/Wayland authority to open a window at all. Only nvcurve needs root.
-GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen "$SCREEN"
-          -benchmark 1 -count "$PASSES" -close 1
-          -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT"
-          -times "$OUT/frametimes.txt" )
-# HARD TIMEOUT. A wedged GravityMark (hung, not crashed) would otherwise block forever
-# and stall an unattended ladder with no verdict at all. Budget = passes x 167s + 25%
-# + 120s slack; exceeding it is itself a failure signal, not a reason to keep waiting.
-BUDGET=$(( PASSES * 167 * 125 / 100 + 120 ))
-say "hard timeout: ${BUDGET}s (a wedged benchmark must not stall the run)"
+# ONE INVOCATION PER PASS, not -count N. Three reasons, all learned the hard way:
+#   1. With -count N, GravityMark prints "Benchmark loop" per pass but only ONE "Score:"
+#      at the very end — so a pass counter keyed on Score reports 0 and calls a clean
+#      run FAILED. Observed on the 2026-08-04 stock baseline: 7 passes done, 0 counted.
+#   2. Per-pass scores are the only way to measure run-to-run VARIANCE, without which
+#      "the offset gained 3%" cannot be separated from noise.
+#   3. A hang at pass 19 loses every earlier score, because nothing reaches disk until
+#      the process exits. One invocation per pass makes each result durable.
+#
+# Hard timeout per pass: a wedged benchmark must not stall an unattended run.
+PASS_BUDGET=$(( 167 * 150 / 100 + 90 ))
+say "per-pass hard timeout: ${PASS_BUDGET}s"
 
+GM_ARGS=( -vk -raytracing 1 -temporal 1 -fullscreen "$FULLSCREEN" -screen "$SCREEN"
+          -benchmark 1 -count 1 -close 1
+          -asteroids "$ASTEROIDS" -width "$WIDTH" -height "$HEIGHT" )
+
+# Root would give the benchmark HOME=/root and no display authority; only nvcurve
+# needs root. Drop to the invoking user, carrying the session environment across.
+AS_USER=()
 if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
-  say "running the benchmark as $SUDO_USER (root would use the wrong HOME and display)"
-  ( cd "$(dirname "$GM")" && timeout -k 20 "$BUDGET" sudo -u "$SUDO_USER" \
-      DISPLAY="${DISPLAY:-:0}" \
-      WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
-      XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")" \
-      XAUTHORITY="${XAUTHORITY:-$home/.Xauthority}" \
-      HOME="$home" \
-      ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
-else
-  ( cd "$(dirname "$GM")" && timeout -k 20 "$BUDGET" ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$OUT/gravitymark.log" 2>&1
+  say "benchmark runs as $SUDO_USER (root has the wrong HOME and no display access)"
+  AS_USER=( sudo -u "$SUDO_USER"
+            DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}"
+            XDG_RUNTIME_DIR="/run/user/$(id -u "$SUDO_USER")"
+            XAUTHORITY="${XAUTHORITY:-$home/.Xauthority}" HOME="$home" )
 fi
-GM_RC=$?
+say ""
+
+: > "$OUT/scores.txt"
+GM_RC=0
+NRUNS=0
+for i in $(seq 1 "$PASSES"); do
+  plog="$OUT/pass-$(printf '%02d' "$i").log"
+  ( cd "$(dirname "$GM")" && timeout -k 20 "$PASS_BUDGET" "${AS_USER[@]}" \
+      ./"$(basename "$GM")" "${GM_ARGS[@]}" ) >"$plog" 2>&1
+  rc=$?
+  sc=$(grep -oE 'Score: [0-9]+' "$plog" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+  cat "$plog" >> "$OUT/gravitymark.log"
+  if [ "$rc" -ne 0 ] || [ -z "$sc" ]; then
+    say "  pass $i/$PASSES: FAILED  rc=$rc  score=${sc:-none}"
+    GM_RC=$rc; [ "$GM_RC" -eq 0 ] && GM_RC=1
+    break
+  fi
+  echo "$sc" >> "$OUT/scores.txt"; sync
+  NRUNS=$((NRUNS+1))
+  say "  pass $i/$PASSES: $sc   $(nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' | tr ',' ' ')"
+done
+chown -R "${SUDO_USER:-$USER}" "$OUT" 2>/dev/null
 chown -R "${SUDO_USER:-$USER}" "$OUT" 2>/dev/null
 
 kill "$SPID" 2>/dev/null
@@ -188,8 +211,7 @@ XID=$(journalctl -k --since "$START_MARK" 2>/dev/null | grep -i 'xid' | tee "$OU
 # SECOND zero and break the numeric test below. grep -c always prints a number: use it.
 DEVLOST=$(grep -ci 'device lost\|VK::error' "$OUT/gravitymark.log" 2>/dev/null)
 DEVLOST=${DEVLOST:-0}
-SCORES=$(grep -oE 'Score: [0-9]+' "$OUT/gravitymark.log" 2>/dev/null | grep -oE '[0-9]+' | tr '\n' ' ')
-NRUNS=$(echo "$SCORES" | wc -w)
+SCORES=$(tr '\n' ' ' < "$OUT/scores.txt" 2>/dev/null)
 
 say "passes completed:   $NRUNS of $PASSES"
 say "GravityMark exit:   $GM_RC"
@@ -228,7 +250,7 @@ if [ "$GM_RC" -eq 127 ] \
 fi
 
 if [ "$GM_RC" -eq 124 ] || [ "$GM_RC" -eq 137 ]; then
-  say "❌ FAILED — the benchmark WEDGED and hit the ${BUDGET}s hard timeout."
+  say "❌ FAILED — the benchmark WEDGED and hit the ${PASS_BUDGET}s per-pass hard timeout."
   say "   It stopped responding without exiting. That is a hang, and it counts as a"
   say "   failure at this setting — completed $NRUNS of $PASSES passes before stalling."
   [ "$XID" -gt 0 ] && { say "   Xid detail:"; tail -5 "$OUT/xid.log" | sed 's/^/     /' | tee -a "$LOG"; }
