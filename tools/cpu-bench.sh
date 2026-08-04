@@ -80,33 +80,41 @@ fi
 # --- helpers ------------------------------------------------------------------
 # stress-ng --metrics-brief prints the stressor row; column 9 is bogo ops/s (real time).
 bogo_from() { awk -v s="$1" '$0 ~ (" "s" ") && NF>=9 {for(i=1;i<=NF;i++) if($i==s){print $(i+5); exit}}' "$2"; }
-# turbostat -S prints one summary row per interval; average a named column.
+# turbostat -S prints a summary row per interval, but the file opens with an
+# elapsed-time line ("60.014170 sec") BEFORE the header — so the header is not
+# necessarily line 1. Find it wherever it is, and re-find it if it repeats.
 col_avg() {
-  awk -v want="$1" 'NR==1{for(i=1;i<=NF;i++) if($i==want) c=i; next}
-                    c && $c ~ /^[0-9.]+$/ {s+=$c; n++}
-                    END{if(n) printf "%.1f", s/n; else print "n/a"}' "$2"
+  awk -v want="$1" '
+    { for(i=1;i<=NF;i++) if($i==want) { c=i; hdr=1; break } }
+    hdr { hdr=0; next }
+    c && $c ~ /^[0-9.]+$/ { s+=$c; n++ }
+    END { if(n) printf "%.1f", s/n; else print "n/a" }' "$2"
 }
 median() { printf '%s\n' "$@" | sort -g | awk '{a[NR]=$1} END{if(NR%2) print a[(NR+1)/2]; else printf "%.2f", (a[NR/2]+a[NR/2+1])/2}'; }
 
 run_set() {          # $1=name  $2=stressor-label  $3..=stress-ng args
   local name=$1 stressor=$2; shift 2
-  local -a scores=() watts=()
+  local -a scores=() watts=() mhz=() temp=()
   echo "--- $name: $RUNS x ${SECS}s ---"
   for i in $(seq 1 "$RUNS"); do
     local so="$OUT/${name}-run${i}.txt" to="$OUT/${name}-run${i}-turbostat.txt"
-    turbostat --interval 5 --quiet -S --show PkgWatt,CoreTmp,Busy%,Bzy_MHz --out "$to" \
+    # PkgTmp, not CoreTmp: the -S summary row carries the package sensor.
+    turbostat --interval 5 --quiet -S --show PkgWatt,PkgTmp,Busy%,Bzy_MHz --out "$to" \
       -- stress-ng "$@" --metrics-brief -t "$SECS" > "$so" 2>&1
-    local b w
+    local b w f c
     b=$(bogo_from "$stressor" "$so"); w=$(col_avg PkgWatt "$to")
+    f=$(col_avg Bzy_MHz "$to");       c=$(col_avg PkgTmp "$to")
     b=${b:-0}
-    scores+=("$b"); watts+=("$w")
-    printf '  run %d: %s bogo-ops/s   %s W avg\n' "$i" "$b" "$w"
+    scores+=("$b"); watts+=("$w"); mhz+=("$f"); temp+=("$c")
+    printf '  run %d: %s bogo-ops/s   %s W   %s MHz   %s °C\n' "$i" "$b" "$w" "$f" "$c"
     sleep 15   # let temps settle between runs
   done
-  local mb mw
+  local mb mw mf mc
   mb=$(median "${scores[@]}"); mw=$(median "${watts[@]}")
-  printf '  MEDIAN: %s bogo-ops/s   %s W\n\n' "$mb" "$mw"
-  printf '%s\tmedian_bogo_ops_s=%s\tmedian_pkg_watt=%s\truns=%s\n' "$name" "$mb" "$mw" "$RUNS" >> "$OUT/summary.txt"
+  mf=$(median "${mhz[@]}");    mc=$(median "${temp[@]}")
+  printf '  MEDIAN: %s bogo-ops/s   %s W   %s MHz   %s °C\n\n' "$mb" "$mw" "$mf" "$mc"
+  printf '%s\tmedian_bogo_ops_s=%s\tmedian_pkg_watt=%s\tmedian_bzy_mhz=%s\tmedian_pkg_tmp=%s\truns=%s\n' \
+    "$name" "$mb" "$mw" "$mf" "$mc" "$RUNS" >> "$OUT/summary.txt"
 }
 
 : > "$OUT/summary.txt"
