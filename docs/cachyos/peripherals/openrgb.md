@@ -1,0 +1,44 @@
+# OpenRGB — profile while awake, dark while asleep
+
+**Machine:** Desktop
+
+Goal and behaviour: `my profile` active whenever the machine is awake; every LED dark
+during sleep. Three pieces, each carrying one mechanism:
+
+| piece | what it does | mechanism it handles |
+|---|---|---|
+| `~/.config/autostart/openrgb-apply-profile.desktop` | applies `my profile` at login | controllers hold whatever they were last told — someone has to tell them |
+| [`rgb/openrgb-sleep.sh`](../../../rgb/openrgb-sleep.sh) → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** all devices → black, **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
+| the profile itself (`~/.config/OpenRGB/my profile.orp`) | the desired awake state | must contain **all** devices — see the failure mode below |
+
+Deploy the hook:
+
+```fish
+sudo install -m755 rgb/openrgb-sleep.sh /etc/systemd/system-sleep/openrgb.sh
+```
+
+Verify: sleep the machine — everything dark, RAM included. Wake it — profile colors,
+no rainbow.
+
+## ⚠️ The silent failure mode: a profile apply that skips devices
+
+`openrgb -p` matches profile entries to detected devices on stored identity data
+(name **and** location strings — hidraw paths, i2c bus numbers). When enumeration
+drifts (BIOS update, kernel change), the entry stops matching and the apply **skips
+that device while still printing "Profile loaded successfully"**. Observed 2026-08-05:
+the RAM (stable `/dev/i2c-8` address) applied; the ASUS board and GPU were silently
+skipped, leaving "RAM blue, everything else off/rainbow".
+
+The sign: a partial apply with a success message. The fix: open the GUI, set all
+devices, re-save the profile under the same name. The sleep hook's dark half is immune
+by design — `openrgb -m direct -c 000000` broadcasts to whatever is detected, no
+profile matching involved.
+
+## Device notes
+
+- Each Corsair DIMM is its **own OpenRGB device** (direct SMBus, not routed through
+  the board's Aura controller) — a profile must include both sticks.
+- The RTX 5090 FE illumination is **white-only**: OpenRGB drives brightness; any color
+  renders white. Not a bug.
+- "Connection attempt failed" on every CLI invocation is OpenRGB failing to find an
+  SDK server before falling back to direct control — harmless noise.
