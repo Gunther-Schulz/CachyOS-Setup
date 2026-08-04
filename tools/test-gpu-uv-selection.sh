@@ -313,5 +313,135 @@ else
 fi
 
 echo
+echo "=== an interrupted soak ENDS the run (2026-08-04: it fell through to the finale) ==="
+# A 6-second Ctrl-C produced a full verdict and a SWEEP COMPLETE marker, which then hid
+# the file from --resume. The contract: a killed soak records INTERRUPTED and EXITS —
+# execution must never reach the statement after run_rung.
+printf '#!/bin/bash\necho "output: /tmp/nowhere"\nexit 130\n' > "$TMP/soak-130"; chmod +x "$TMP/soak-130"
+cat > "$TMP/rr-harness.sh" <<EOF
+set -uo pipefail
+STATE="$TMP/rr-state.tsv"; SOAK="$TMP/soak-130"; PASSES=1; SCREEN=0; WINDOWED=""; CUR_LABEL=""
+say() { :; }
+$(sed -n '/^run_rung()/,/^}/p' "$SUT")
+run_rung "925mV/2600"
+echo NOTREACHED
+EOF
+: > "$TMP/rr-state.tsv"
+rr_out=$(bash "$TMP/rr-harness.sh" 2>&1); rr_rc=$?
+if [ "$rr_rc" = 130 ] && ! grep -q NOTREACHED <<<"$rr_out" \
+   && grep -q INTERRUPTED "$TMP/rr-state.tsv"; then
+  printf '  ✅ %-34s\n' "killed soak: stops, rc=130, recorded"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s rc=%s\n' "killed soak fell through to the finale" "$rr_rc"; FAIL=$((FAIL+1))
+fi
+
+# on_sig (the Ctrl-C trap): must record the in-flight rung so --resume does not misread
+# a bare STARTED line as a crash, then exit — and must NOT double-record a finished rung.
+mk_sig() { cat > "$TMP/sig-harness.sh" <<EOF
+set -uo pipefail
+STATE="$TMP/sig-state.tsv"; CUR_LABEL="925mV/2600"
+cleanup() { :; }
+$(sed -n '/^on_sig()/,/^}/p' "$SUT")
+on_sig
+echo NOTREACHED
+EOF
+}
+mk_sig
+printf '925mV/2600\tSTARTED\t\t2026-08-04T23:35:14+02:00\n' > "$TMP/sig-state.tsv"
+sig_out=$(bash "$TMP/sig-harness.sh" 2>&1); sig_rc=$?
+if [ "$sig_rc" = 130 ] && ! grep -q NOTREACHED <<<"$sig_out" \
+   && [ "$(grep -c INTERRUPTED "$TMP/sig-state.tsv")" = 1 ]; then
+  printf '  ✅ %-34s\n' "trap: records in-flight rung, exits"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s rc=%s\n' "trap must record and exit 130" "$sig_rc"; FAIL=$((FAIL+1))
+fi
+printf '925mV/2600\tSTARTED\t\tx\n925mV/2600\tFINISHED\tPASS\tx\ty\n' > "$TMP/sig-state.tsv"
+bash "$TMP/sig-harness.sh" >/dev/null 2>&1
+if [ "$(grep -c INTERRUPTED "$TMP/sig-state.tsv")" = 0 ]; then
+  printf '  ✅ %-34s\n' "trap: finished rung not re-recorded"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s\n' "trap double-recorded a finished rung"; FAIL=$((FAIL+1))
+fi
+
+echo
+echo "=== --resume refuses to guess between unfinished runs (2026-08-04: mtime picked ==="
+echo "=== a 2-rung file over the 15-rung one; --state names the file meant)          ==="
+mkdir -p "$TMP/selbench"
+mk_sel() { cat > "$TMP/sel-harness.sh" <<EOF
+set -uo pipefail
+STATE_DIR="$TMP/selbench"; LATEST="\$STATE_DIR/explore-latest.tsv"; STATE_OPT="${1:-}"
+$(sed -n '/^unfinished()/,/^PRIOR=\$(newest_unfinished)/p' "$SUT" | head -n -1)
+choose_resume_state
+EOF
+}
+printf 'stock\tFINISHED\tPASS\tx\ty\n' > "$TMP/selbench/explore-a.tsv"
+mk_sel ""
+sel_out=$(bash "$TMP/sel-harness.sh" 2>/dev/null); sel_rc=$?
+if [ "$sel_rc" = 0 ] && [ "$sel_out" = "$TMP/selbench/explore-a.tsv" ]; then
+  printf '  ✅ %-34s\n' "one unfinished run: picked"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s rc=%s got=%s\n' "one unfinished run: picked" "$sel_rc" "$sel_out"; FAIL=$((FAIL+1))
+fi
+sleep 0.05; printf 'stock\tFINISHED\tPASS\tx\ty\n' > "$TMP/selbench/explore-b.tsv"
+sel_err=$(bash "$TMP/sel-harness.sh" 2>&1 >/dev/null); sel_rc=$?
+if [ "$sel_rc" != 0 ] && grep -q explore-a.tsv <<<"$sel_err" && grep -q explore-b.tsv <<<"$sel_err"; then
+  printf '  ✅ %-34s\n' "two unfinished: refuses, lists both"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s rc=%s\n' "two unfinished: silently guessed" "$sel_rc"; FAIL=$((FAIL+1))
+fi
+mk_sel "$TMP/selbench/explore-b.tsv"
+sel_out=$(bash "$TMP/sel-harness.sh" 2>/dev/null); sel_rc=$?
+if [ "$sel_rc" = 0 ] && [ "$sel_out" = "$TMP/selbench/explore-b.tsv" ]; then
+  printf '  ✅ %-34s\n' "--state: names the file, wins"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s rc=%s\n' "--state must override the scan" "$sel_rc"; FAIL=$((FAIL+1))
+fi
+printf 'SWEEP\tCOMPLETE\t\tx\n' >> "$TMP/selbench/explore-b.tsv"
+bash "$TMP/sel-harness.sh" >/dev/null 2>&1
+if [ $? != 0 ]; then
+  printf '  ✅ %-34s\n' "--state on a finished run: refused"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s\n' "--state resumed a COMPLETE run"; FAIL=$((FAIL+1))
+fi
+
+echo
+echo "=== verdict noise bar (2026-08-04: same rung scored 3.5% apart across runs, ==="
+echo "=== stock moved 7%; '+7.1% WINS BOTH' was baseline drift sold as a win)     ==="
+REPORT="$HERE/gpu-ladder-report.sh"
+mk_fix() { # $1=dir $2=stockMHz $3=stockW $4=stockScore $5=rungMHz $6=rungW $7=rungScore
+  local d=$1; rm -rf "$d"; mkdir -p "$d/soak-stock" "$d/soak-rung"
+  local i; for i in 1 2 3 4; do
+    echo "t $2 $3 76 50" >> "$d/soak-stock/sensors.txt"; echo "t $5 $6 75 50" >> "$d/soak-rung/sensors.txt"
+    echo "$4" >> "$d/soak-stock/scores.txt"; echo "$7" >> "$d/soak-rung/scores.txt"
+  done
+  printf 'stock\tSTARTED\t\tx\nstock\tFINISHED\tPASS\tx\t%s\n1000mV/3000\tSTARTED\t\tx\n1000mV/3000\tFINISHED\tPASS\tx\t%s\n' \
+    "$d/soak-stock" "$d/soak-rung" > "$d/state.tsv"
+}
+# the real afternoon numbers: score +7.1% on a clock delta of -0.3% — impossible work
+mk_fix "$TMP/noiseA" 2811 352 76896 2802 333 82329
+rep=$(bash "$REPORT" --state "$TMP/noiseA/state.tsv" 2>&1)
+if grep -q "IMPLAUSIBLE" <<<"$rep" && grep -q "VERDICT WITHHELD" <<<"$rep" && ! grep -q "WINS" <<<"$rep"; then
+  printf '  ✅ %-34s\n' "score gain w/o clock: withheld"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s\n' "baseline drift sold as a win again"; FAIL=$((FAIL+1))
+fi
+# the real evening numbers: score -3.3% (inside the bar), power -10.7% — an honest win
+mk_fix "$TMP/noiseB" 2806 366 82244 2813 327 79531
+rep=$(bash "$REPORT" --state "$TMP/noiseB/state.tsv" 2>&1)
+if grep -q "WINS" <<<"$rep" && ! grep -q "VERDICT WITHHELD" <<<"$rep"; then
+  printf '  ✅ %-34s\n' "honest power win still wins"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s\n' "honest win rejected by the bar"; FAIL=$((FAIL+1))
+fi
+# power delta inside its 4% bar must not be claimed as a benefit
+mk_fix "$TMP/noiseC" 2806 366 82244 2810 355 81900
+rep=$(bash "$REPORT" --state "$TMP/noiseC/state.tsv" 2>&1)
+if grep -q "no measured benefit" <<<"$rep" && ! grep -q "WINS" <<<"$rep"; then
+  printf '  ✅ %-34s\n' "within-noise power: no claim"; PASS=$((PASS+1))
+else
+  printf '  ❌ %-34s\n' "noise-level power sold as a win"; FAIL=$((FAIL+1))
+fi
+
+echo
 if [ "$FAIL" -eq 0 ]; then echo "✅ all $PASS cases pass"; exit 0
 else echo "❌ $FAIL of $((PASS+FAIL)) cases FAILED"; exit 1; fi

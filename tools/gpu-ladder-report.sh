@@ -114,7 +114,20 @@ fi
 echo
 
 # ── the analysis, rather than instructions for doing it by hand ─────────────────────
-awk -F'\t' -v rw="$REF_W" -v rf="$REF_MHZ" -v rs="$REF_SC" '
+# Resolution floor — MEASURED, not assumed. On 2026-08-04 the SAME rung (1000mV/3000,
+# same card, same screen, same day) scored 82329 in one run and 79531 in the next: 3.5%
+# apart. The stock baseline itself moved 7.0% (76896 vs 82244). A score delta inside
+# that band is run-to-run noise wearing a sign — the afternoon run sold "+7.1% WINS
+# BOTH" on it and the evening rerun flipped the same rung to -3.3%. Power spread the
+# same day: 1.8% same-rung, 3.9% stock — hence the separate power bar.
+# The cross-check that catches a drifted baseline: score is work delivered, and a
+# voltage ceiling cannot deliver more work than its own clock — a rung whose score gain
+# exceeds its clock gain by more than the noise bar is not fast, its stock reference is
+# broken. (Clock stretching pushes the other way — score BELOW clock — and stays the
+# STRETCHED tag's job.)
+NOISE_SC=3.5
+NOISE_W=4.0
+awk -F'\t' -v rw="$REF_W" -v rf="$REF_MHZ" -v rs="$REF_SC" -v nsc="$NOISE_SC" -v nw="$NOISE_W" '
 BEGIN { if (rw+0 <= 0 || rf+0 <= 0) {
           print "No stock baseline in this ladder — nothing to compare against."
           print "The verdict is deliberately withheld rather than computed against a"
@@ -157,15 +170,23 @@ END {
     cov = (ceil[anc[i]] > tgt[i])
     if (str_by!="") { sb=0; for (k=1;k<=n;k++) if (rung[k]==str_by) sb=sc[k]
                       note="STRETCHED — reports more clock than " str_by " but delivers " sprintf("%+.1f", (sc[i]/sb-1)*100) "% work" }
-    else if (ds>=-0.5 && dw<=-2) { note="WINS BOTH — score held, power down" (cov?"  [margin proven]":"  [top rung — no margin above]")
+    else if (ds-df > nsc)        { suspect++
+                                   note=sprintf("⚠️ IMPLAUSIBLE — score %+.1f%% but clock %+.1f%%: a ceiling cannot add work its clock did not deliver; the stock reference is the suspect", ds, df) }
+    else if (ds>=-nsc && dw<=-nw){ note=sprintf("WINS — score held (inside the ±%.1f%% noise bar), power down beyond noise", nsc) (cov?"  [margin proven]":"  [top rung — no margin above]")
                                    if(verd[i]=="PASS" && cov && (best==0 || sc[i]>sc[best])) best=i }
-    else if (ds>=-0.5)           { note="score held, power not improved" }
-    else if (dw<=-2)             { note=sprintf("trade: %.1f%% score for %.1f%% power", -ds, -dw) }
+    else if (ds>=-nsc)           { note=sprintf("score held, power delta inside the ±%.0f%% noise bar — no measured benefit", nw) }
+    else if (dw<=-nw)            { note=sprintf("trade: %.1f%% score for %.1f%% power", -ds, -dw) }
     else                         { note="worse on both — no reason to use" }
     printf "  %-12s score %+5.1f%%   power %+5.1f%%   %s%s\n", rung[i], ds, dw, note, tag
   }
   print ""
-  if (best) {
+  if (suspect) {
+    printf "  ⚠️ VERDICT WITHHELD — %d rung(s) score above stock by more than their clocks\n", suspect
+    print  "  can explain. A voltage ceiling cannot out-work its own delivered clock, so"
+    print  "  the STOCK REFERENCE is what is broken — every rung shares it, so no ranking"
+    print  "  from this table is trustworthy. Re-run the stock rung in the same session"
+    print  "  and conditions as the rungs, then re-report."
+  } else if (best) {
     printf "  ► BEST: %s — %+.1f%% score at %.0f%% less power.\n", rung[best], (sc[best]/rs-1)*100, -(w[best]/rw-1)*100
     printf "    A higher rung at %d mV (%d MHz) also passed, so its stability margin is\n", anc[best], ceil[anc[best]]
     print  "    measured rather than assumed. Faster-or-equal, cooler, and covered."

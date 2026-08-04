@@ -28,6 +28,7 @@
 #   sudo ./tools/gpu-uv-explore.sh --screen 1
 #   sudo ./tools/gpu-uv-explore.sh --screen 1 --anchors "1000 950 900" --passes 6
 #   sudo ./tools/gpu-uv-explore.sh --resume     # CONTINUE after Ctrl-C or a hang
+#   sudo ./tools/gpu-uv-explore.sh --resume --state ~/bench/explore-state.tsv
 #   ./tools/gpu-uv-explore.sh --status          # report only, change nothing
 #   sudo ./tools/gpu-uv-explore.sh --dry-run    # show the derived ladder, write nothing
 #   ./tools/gpu-ladder-report.sh --state ~/bench/explore-state.tsv
@@ -50,6 +51,7 @@ WINDOWED=""
 RESUME=0
 STATUS=0
 DRYRUN=0
+STATE_OPT=""        # --state: name the run file explicitly instead of letting --resume guess
 
 usage() { sed -n '2,34p' "$0"; exit "${1:-0}"; }
 
@@ -63,6 +65,7 @@ while [ $# -gt 0 ]; do
     --screen) SCREEN=$2; shift 2 ;;
     --windowed) WINDOWED="--windowed"; shift ;;
     --resume) RESUME=1; shift ;;
+    --state) STATE_OPT=$2; shift 2 ;;
     --status) STATUS=1; shift ;;
     --dry-run) DRYRUN=1; shift ;;
     -h|--help) usage 0 ;;
@@ -84,19 +87,47 @@ LATEST="$STATE_DIR/explore-latest.tsv"
 # grep does not interpret \t, so '^SWEEP\tCOMPLETE' matched nothing and every run —
 # finished or not — was offered for resume. Match the field with awk instead.
 unfinished() { [ -f "$1" ] && ! awk -F'\t' '$1=="SWEEP" && $2=="COMPLETE"{f=1} END{exit !f}' "$1"; }
-newest_unfinished() {
+all_unfinished() {
   local f
   for f in $(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null); do
     [ "$f" = "$LATEST" ] && continue
-    unfinished "$f" && { echo "$f"; return; }
+    unfinished "$f" && echo "$f"
   done
+}
+newest_unfinished() { all_unfinished | head -1; }
+
+# Which file does --resume continue? NEVER guessed from mtime when the answer is
+# ambiguous. On 2026-08-04 "newest unfinished" silently picked a 2-rung file over the
+# 15-rung one sitting next to it — mtime ranks recency, and recency is not richness.
+# One candidate: use it. Several: list them and refuse; --state names the one meant.
+choose_resume_state() {
+  if [ -n "$STATE_OPT" ]; then
+    [ -f "$STATE_OPT" ] || { echo "--state: no such file: $STATE_OPT" >&2; return 1; }
+    unfinished "$STATE_OPT" || {
+      echo "--state: $STATE_OPT already recorded SWEEP COMPLETE — nothing to resume." >&2
+      echo "  (to re-open it deliberately:  sed -i '/^SWEEP/d' $STATE_OPT)" >&2; return 1; }
+    echo "$STATE_OPT"; return 0
+  fi
+  local -a unf=()
+  local f
+  while IFS= read -r f; do [ -n "$f" ] && unf+=("$f"); done < <(all_unfinished)
+  case ${#unf[@]} in
+    0) echo "no unfinished run to resume in $STATE_DIR" >&2; return 1 ;;
+    1) echo "${unf[0]}"; return 0 ;;
+    *) echo "⚠️ ${#unf[@]} unfinished runs exist — refusing to pick one by date." >&2
+       for f in "${unf[@]}"; do
+         printf '     %s   (%s rungs recorded)\n' "$f" \
+           "$(awk -F'\t' '$2=="FINISHED"' "$f" | wc -l)" >&2
+       done
+       echo "   Name the one you mean:  --resume --state <file>" >&2; return 1 ;;
+  esac
 }
 
 PRIOR=$(newest_unfinished)
 
 # ── --status: report only, change nothing ───────────────────────────────────────────
 if [ "$STATUS" = 1 ]; then
-  STATE=${STATE:-${PRIOR:-$(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null | grep -v latest | head -1)}}
+  STATE=${STATE_OPT:-${PRIOR:-$(ls -t "$STATE_DIR"/explore-*.tsv 2>/dev/null | grep -v latest | head -1)}}
   [ -f "$STATE" ] || { echo "no run found in $STATE_DIR" >&2; exit 1; }
   echo "run: $STATE"; echo
   exec "$HERE/gpu-ladder-report.sh" --state "$STATE"
@@ -215,8 +246,7 @@ BASE_DONE=0
 declare -A ANCHOR_MAX ANCHOR_DONE
 
 if [ "$RESUME" = 1 ]; then
-  STATE=$PRIOR
-  [ -n "$STATE" ] || { echo "no unfinished run to resume in $STATE_DIR" >&2; exit 1; }
+  STATE=$(choose_resume_state) || exit 1
   echo "resuming: $STATE"
 elif [ -n "$PRIOR" ]; then
   # Running fresh over an unfinished run would DESTROY it. Ask, rather than assume.
@@ -300,7 +330,30 @@ if [ "$RESUME" = 1 ]; then
 fi
 
 cleanup() { [ -x "$NVCURVE" ] && "$NVCURVE" write --reset >/dev/null 2>&1; echo "curve reset to stock."; }
-trap cleanup EXIT INT TERM
+
+# An interrupt is an order to STOP, not a data point. Ctrl-C reaches the soak first
+# (same process group); the child dies 130 and bash runs this trap before run_rung's own
+# case statement. The 2026-08-04 abort showed what a non-exiting trap does: cleanup ran,
+# the script RESUMED, the sweep loop treated the interrupted rung as merely not-passed,
+# walked to the finale, and wrote SWEEP COMPLETE plus a verdict over a 6-second run —
+# which then hid the file from --resume. Record the interrupted rung (so resume does not
+# misread a bare STARTED line as a crash), reset the curve, and stop.
+CUR_LABEL=""
+on_sig() {
+  trap - EXIT INT TERM
+  if [ -n "$CUR_LABEL" ] && awk -F'\t' -v l="$CUR_LABEL" \
+       '$1==l && $2=="STARTED"{o=1;d=0} $1==l && $2=="FINISHED"{d=1} END{exit !(o && !d)}' \
+       "$STATE" 2>/dev/null; then
+    printf '%s\tFINISHED\tINTERRUPTED\t%s\t\n' "$CUR_LABEL" "$(date -Is)" >> "$STATE"; sync
+  fi
+  cleanup
+  echo ""
+  echo "interrupted — stopping HERE. SWEEP COMPLETE is NOT written: this run stays"
+  echo "resumable with --resume."
+  exit 130
+}
+trap on_sig INT TERM
+trap cleanup EXIT
 
 # NOTE: the state file is truncated ONLY in the non-resume branch above. An
 # unconditional `: > "$STATE"` here would erase the very history --resume just read.
@@ -483,22 +536,27 @@ furmark_probe() {   # $1 = label for the log
 }
 
 run_rung() {   # $1 = label
+  CUR_LABEL=$1
   printf '%s\tSTARTED\t\t%s\n' "$1" "$(date -Is)" >> "$STATE"; sync
   local out rc
   # Capture the soak's own output directory rather than matching it by timestamp later.
   # Timestamp matching is guesswork that breaks whenever two runs land in the same second.
   out=$("$SOAK" --passes "$PASSES" --screen "$SCREEN" $WINDOWED 2>&1 | tee -a "${STATE%.tsv}.soaks.log" | awk '/^output:/{print $2}')
   rc=${PIPESTATUS[0]}
-  # 130/143 mean the soak was killed by SIGINT/SIGTERM — the operator interrupted it.
-  # That is UNPROVEN, not failed; recording it as FAIL would bound the anchor on no
-  # evidence and permanently hide a clock that was never actually tested.
+  # 130/143 mean the soak was killed by SIGINT/SIGTERM. That is UNPROVEN, not failed —
+  # recording FAIL would bound the anchor on no evidence — and it ENDS THE RUN: a killed
+  # soak means someone wants this stopped. Reaching this branch at all means the kill hit
+  # the soak alone (a group-wide Ctrl-C exits through on_sig above, before this line).
   case "$rc" in
     0)       printf '%s\tFINISHED\tPASS\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
     2)       printf '%s\tFINISHED\tINCONCLUSIVE\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
-    130|143) printf '%s\tFINISHED\tINTERRUPTED\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
+    130|143) printf '%s\tFINISHED\tINTERRUPTED\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE"; sync
+             say "  soak was killed (rc=$rc) — stopping. SWEEP COMPLETE is NOT written:"
+             say "  this run stays resumable with --resume."
+             exit "$rc" ;;
     *)       printf '%s\tFINISHED\tFAIL\t%s\t%s\n' "$1" "$(date -Is)" "$out" >> "$STATE" ;;
   esac
-  sync; return $rc
+  sync; CUR_LABEL=""; return $rc
 }
 
 # Mean score and spread for a recorded rung. Instability announces itself in the SCORE
