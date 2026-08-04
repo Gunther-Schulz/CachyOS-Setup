@@ -255,6 +255,44 @@ the curve returns ~90 MHz per 10 mV, above it that collapses to 14.
 points correctly and is the right basis for *choosing* a target; the actual saving must
 be measured with `gpu-thermal.sh`, not taken from this table.
 
+### ⚠️ First result: the PERFORMANCE gain is at or below the noise floor
+
+Sweep of global V/F offsets +50 → +300 (2026-08-04), all passing `gpu_burn` with
+`errors: 0`:
+
+| Offset | gpu_burn GFLOP/s | FurMark FPS (operator, on-screen) |
+|---|---|---|
+| +50 | 63 844 | ~440s |
+| +100 | 63 248 | ~440s |
+| +150 | 63 446 | ~440s |
+| +200 | 63 847 | ~440s |
+| +250 | 63 861 | ~440s |
+| +300 | 64 480 | ~440s |
+
+**A 1.9 % spread across 250 MHz of offset, with no trend.** Operator's assessment —
+*"if there is a change it's marginal and looks like noise"* — matches the data.
+
+**Why, and it is structural rather than a measurement failure:** both test loads are
+**power-capped at 575 W**. Under a hard cap an offset cannot buy clock — it can only buy
+whatever extra clock the freed voltage allows *before power hits the ceiling again*. A
+hand-sampled live reading gave **~2 174 MHz at +300 vs ~2 125 MHz at stock**, both at
+575 W and 86–87 °C: **≈ +2 %**, which is real but too small for these instruments to
+separate from run-to-run variance. `gpu_burn` additionally cannot see clock at all — on
+268 MB matrices it is bandwidth-bound.
+
+**The benefit worth chasing on this machine is thermal, not performance.** Same work at
+lower voltage means less heat, and the operator's actual complaint is fan noise, not
+frame rate. FurMark ran **80 °C at +250 against 87 °C at stock** — but the sweep has **no
+cooldown between steps**, so the card accumulates heat and later offsets are tested under
+*worse* conditions than earlier ones. That 7 °C is therefore **not trustworthy**, and it
+points the opposite way to the bias, which makes it interesting rather than conclusive.
+
+**⚠️ Known defects in this sweep's measurements** (pass/fail verdicts are unaffected —
+`errors:`, crashes and `Xid` are robust): `sensors_line` samples *after* the load exits,
+so every clock/power/temp figure in `progress.log` is an **idle reading**; FurMark runs
+with `--no-score-box` so no FPS is captured; one sample per offset, so no variance
+estimate; and no thermal control between steps.
+
 ### An undervolt is an overclock at fixed voltage — which is why FPS can RISE
 
 The name misleads. The edit is not "less voltage at the same clock"; there is no
