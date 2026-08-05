@@ -50,10 +50,11 @@ even while the hardware is lit. Set color **and raise the Brightness slider** on
 device before saving, or the profile stores "correct color at brightness zero".
 
 The same applies to editing: **"Load Profile" pushes colors to the devices but does
-not populate the picker fields** — the picker is an input, not a mirror, and there is
-no hardware readback to fall back on. To adjust from the current setting, type the hex
-from the table above into the picker and nudge from there; if a new value sticks,
-update the table in the same edit.
+not populate the picker fields.** That one is an OpenRGB UI shortcoming, not a hardware
+limit — the values are in the file it just parsed; the picker simply never syncs from
+loaded state (the per-LED preview strip on the device page may still show them).
+To adjust from the current setting, type the hex from the table above into the picker
+and nudge from there; if a new value sticks, update the table in the same edit.
 
 ## Device notes
 
