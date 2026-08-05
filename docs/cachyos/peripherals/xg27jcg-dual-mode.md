@@ -22,6 +22,15 @@
 - **2K:** GNOME picks res/scale automatically.
 - **5K:** GNOME defaults to 4K → force 5K with `gdctl`.
 - Scale: 5K = 166%, 2K = 100%.
+- **VRR (desktop): works, including with the second monitor attached** — measured
+  2026-08-05 (operator, toggle on + tried). GNOME 50 moved the toggle into the
+  monitor's **sub-setting** in Displays; it is not on the main panel. Under Wayland
+  each monitor is its own CRTC with an independent frame clock, so the 60 Hz Dell
+  does not constrain this one — the "second monitor kills VRR" rule belongs to
+  X11's single frame clock, and the laptop's missing VRR is its own mechanism
+  (NVIDIA hybrid reports `vrr_capable=0`,
+  [laptop doc](../laptop/gnome-vrr-external-monitor-hybrid.md)); neither transfers
+  here.
 
 ## Usage
 
