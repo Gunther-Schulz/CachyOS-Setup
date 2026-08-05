@@ -16,19 +16,31 @@ during sleep. Three pieces, each carrying one mechanism:
 
 The first, unscoped pre-hook ran full device detection (GPU i2c, USB Aura hidraw)
 seconds before suspend entry — and the first suspend after its install **aborted**
-("Wakeup pending. Abort CPU freeze" + a spurious PCIe PME), while the suspend an hour
-earlier, without the hook, had worked. n=1 and circumstantial — but pre never had
-business beyond the DIMMs anyway: the board and GPU **lose power in S3 and go dark on
-their own**; only the RAM keeps standby power. The scoped detector config makes pre
-touch only the SMBus DIMMs (verified: scoped `--list-devices` shows exactly the two
-sticks; the scoped black leaves board/GPU lit). **Falsification path:** if a suspend
-aborts *with* the scoped hook, the hook was not the cause — hunt the PME source, not
-this file. Two side-facts from the same incident: **post does not run when the suspend
-itself fails** (a failed attempt can still reset the board to rainbow — re-apply by
-hand), and the s2idle fallback error in the journal (`amdgpu … BIOS has not been
-configured for suspend-to-idle`) is environmental — this machine sleeps `deep`, the
-fallback can never work, ignore it. After an OpenRGB update, **new detectors are
-unlisted and default ON** — re-verify the scope:
+("Wakeup pending. Abort CPU freeze" + a spurious PCIe PME). A later suspend
+**succeeded with the same unscoped hook installed**, so the abort attribution is
+**probabilistic at most** — same hook, one abort, one success. The scope is right
+regardless: pre never had business beyond the DIMMs — the board and GPU **lose power
+in S3 and go dark on their own**; only the RAM keeps standby power — and full
+detection touches a GPU the `nvidia` sleep-hook (alphabetically earlier) has already
+prepared for suspend. That touch is also the likely reason the unscoped pre set
+**nothing** (RAM stayed lit through the successful suspend): a hang there, killed by
+the 30 s timeout, exits before any color is written. The scoped detector config makes
+pre touch only the SMBus DIMMs (verified: scoped `--list-devices` shows exactly the
+two sticks, including under a display-less stripped environment; the scoped black
+leaves board/GPU lit).
+
+Post lessons from the same night: **post does not run when the suspend itself fails**
+(a failed attempt can still reset the board to rainbow — re-apply by hand), a fixed
+post-delay **lost the USB re-enumeration race** once (board stayed rainbow after a
+successful suspend), and `openrgb -p` **exits 0 while silently skipping absent
+devices** — so the hook gates the apply on the full device roster (count), not on the
+apply's exit code. Hook output goes to the journal deliberately: the first field
+failure was invisible only because every line ended in `>/dev/null 2>&1`.
+
+The s2idle fallback error in the journal (`amdgpu … BIOS has not been configured for
+suspend-to-idle`) is environmental — this machine sleeps `deep`, the fallback can
+never work, ignore it. After an OpenRGB update, **new detectors are unlisted and
+default ON** — re-verify the scope:
 `openrgb --config ~/.config/OpenRGB-sleep --list-devices` must list exactly the two
 DIMMs.
 
