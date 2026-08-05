@@ -7,18 +7,30 @@ during sleep. Three pieces, each carrying one mechanism:
 
 | piece | what it does | mechanism it handles |
 |---|---|---|
-| `~/.config/autostart/openrgb-apply-profile.desktop` | applies `my profile` at login | controllers hold whatever they were last told — someone has to tell them |
-| [`rgb/openrgb-sleep.sh`](../../../rgb/openrgb-sleep.sh) → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** all devices → black, **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
+| dotfiles `desktop/openrgb-apply-profile.desktop` | applies `my profile` at login | controllers hold whatever they were last told — someone has to tell them |
+| dotfiles `desktop/openrgb-sleep.sh` → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** all devices → black, **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
 | the profile itself (`~/.config/OpenRGB/my profile.orp`) | the desired awake state | must contain **all** devices — see the failure mode below |
 
-Deploy the hook:
-
-```fish
-sudo install -m755 rgb/openrgb-sleep.sh /etc/systemd/system-sleep/openrgb.sh
-```
+Both artifacts are **owned and deployed by the dotfiles repo** (`dot apply`); this doc
+carries the why, not a copy.
 
 Verify: sleep the machine — everything dark, RAM included. Wake it — profile colors,
 no rainbow.
+
+## Reading the saved colors back
+
+The GUI can't show them (below), so this repo carries a reader:
+
+```fish
+./tools/openrgb-profile-colors.py            # prints device → hex from the .orp
+```
+
+Verified at build time against colors set by hand minutes earlier, and it refuses
+("unparseable") rather than ever printing wrong colors when the format drifts —
+re-verify against a known color after any OpenRGB format-version bump. Caveat: the
+white-only GPU is driven by a brightness field the tool does not parse, so its color
+row is meaningless. First run immediately caught a real mismatch: the two sticks had
+been saved as `0623FF` and `001EFF` — visually indistinguishable blues.
 
 ## ⚠️ The silent failure mode: a profile apply that skips devices
 
@@ -53,8 +65,11 @@ The same applies to editing: **"Load Profile" pushes colors to the devices but d
 not populate the picker fields.** That one is an OpenRGB UI shortcoming, not a hardware
 limit — the values are in the file it just parsed; the picker simply never syncs from
 loaded state (the per-LED preview strip on the device page may still show them).
-To adjust from the current setting, type the hex from the table above into the picker
-and nudge from there; if a new value sticks, update the table in the same edit.
+Possibly a 1.0rc3 regression — operator recollection of 0.9 behaving better,
+unverified; re-check after the next OpenRGB update. To adjust from the current
+setting, read the saved values with `tools/openrgb-profile-colors.py`, type the hex
+into the picker and nudge from there; if a new value sticks, update the table in the
+same edit.
 
 ## Device notes
 
