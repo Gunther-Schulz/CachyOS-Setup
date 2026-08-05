@@ -49,6 +49,12 @@ read colors back, so it shows its own staged state (black, brightness at minimum
 even while the hardware is lit. Set color **and raise the Brightness slider** on every
 device before saving, or the profile stores "correct color at brightness zero".
 
+The same applies to editing: **"Load Profile" pushes colors to the devices but does
+not populate the picker fields** — the picker is an input, not a mirror, and there is
+no hardware readback to fall back on. To adjust from the current setting, type the hex
+from the table above into the picker and nudge from there; if a new value sticks,
+update the table in the same edit.
+
 ## Device notes
 
 - Each Corsair DIMM is its **own OpenRGB device** (direct SMBus, not routed through
