@@ -62,15 +62,13 @@ Keyboard repeat issue may return.
 
 **Apply profile at login (no i2c needed):** Run `openrgb -p "PROFILE_NAME"` from session autostart so it gets DISPLAY and exits on its own (no timeout hack). Profile name must match the `.orp` filename (without `.orp`) in `~/.config/OpenRGB/` exactly (e.g. `my profile.orp` → `"my profile"`).
 
-> **Open question — does `-p` alone actually apply?** During the outage above,
-> `openrgb -p "my profile"` printed nothing and exited 0, while
-> `openrgb --server -p "my profile"` printed *"Profile loaded successfully"*.
-> That difference is real at the **output** level, but it was never confirmed at
-> the **lighting** level, because the BIOS gate meant *no* invocation could have
-> produced a visible change. **Re-test now that lighting works:** run plain
-> `openrgb -p "my profile"` from a terminal with the lights in a different
-> state. Colours change → the autostart above is correct as written; nothing
-> changes → add `--server` to the `Exec=` line in dotfiles.
+**Answered 2026-08-06 — plain `-p` applies; `--server` is not needed.** The sleep
+hook's post branch runs exactly `openrgb -p "my profile"` (no `--server`, under
+`runuser`, no `DISPLAY`); the journal shows *"Profile loaded successfully"* and the
+profile colours visibly replaced the firmware rainbow on resume. The earlier
+"printed nothing and exited 0" reading dates from the BIOS-gate outage and is not
+a property of `-p`. The `Exec=` line below is correct as written — do not add
+`--server`.
 
 The desktop entry is managed by dotfiles — `~/dev/Gunther-Schulz/dotfiles/desktop/openrgb-apply-profile.desktop`:
 

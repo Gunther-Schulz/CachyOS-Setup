@@ -4,7 +4,6 @@ Open / minor issues without a full fix. Resolved items with a real fix live in
 the relevant topical doc (e.g. suspend-wake fixes → [`laptop/s3-sleep.md`](../laptop/s3-sleep.md)).
 
 - Audio interface disconnects on sleep — have to re-plug USB.
-- RGB not restored after sleep.
 - CPU/GPU undervolt + ECO mode + PBO — decided design and sequencing live in [`todo.md`](../todo.md), not here.
 
 **Grey screen in GDM, stuck cursor, Ctrl+Alt+F1 not working:** Often dual-monitor. Disconnect the second monitor and the login dialog appears.

@@ -8,47 +8,95 @@ during sleep. Three pieces, each carrying one mechanism:
 | piece | what it does | mechanism it handles |
 |---|---|---|
 | dotfiles `desktop/openrgb-apply-profile.desktop` | applies `my profile` at login | controllers hold whatever they were last told — someone has to tell them |
-| dotfiles `desktop/openrgb-sleep.sh` → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** DIMMs → black (scoped, see below), **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
-| dotfiles `desktop/openrgb-sleep-detectors.json` → `~/.config/OpenRGB-sleep/OpenRGB.json` | scopes the pre-hook: every detector off except Corsair DRAM | pre must touch **only** what stays powered in S3 — see the suspend abort below |
+| dotfiles `desktop/openrgb-sleep.sh` → `/usr/lib/systemd/system-sleep/openrgb.sh` | **pre:** DIMMs → black (scoped, see below), **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
+| dotfiles `desktop/openrgb-sleep-detectors.json` → `~/.config/OpenRGB-sleep/OpenRGB.json` | scopes the pre-hook: every detector off except Corsair DRAM | pre has no business beyond the DIMMs — board and GPU lose power in S3 and go dark on their own |
 | the profile itself (`~/.config/OpenRGB/my profile.orp`) | the desired awake state | must contain **all** devices — see the failure mode below |
 
-## ⚠️ Why the pre-hook is scoped to the DIMMs — a suspend abort
+## ⚠️ The hook belongs in `/usr/lib`, never `/etc` — systemd scans one directory
 
-The first, unscoped pre-hook ran full device detection (GPU i2c, USB Aura hidraw)
-seconds before suspend entry — and the first suspend after its install **aborted**
-("Wakeup pending. Abort CPU freeze" + a spurious PCIe PME). A later suspend
-**succeeded with the same unscoped hook installed**, so the abort attribution is
-**probabilistic at most** — same hook, one abort, one success. The scope is right
-regardless: pre never had business beyond the DIMMs — the board and GPU **lose power
-in S3 and go dark on their own**; only the RAM keeps standby power — and full
-detection touches a GPU the `nvidia` sleep-hook (alphabetically earlier) has already
-prepared for suspend. That touch is also the likely reason the unscoped pre set
-**nothing** (RAM stayed lit through the successful suspend): a hang there, killed by
-the 30 s timeout, exits before any color is written. The scoped detector config makes
-pre touch only the SMBus DIMMs (verified: scoped `--list-devices` shows exactly the
-two sticks, including under a display-less stripped environment; the scoped black
-leaves board/GPU lit).
+**`systemd-sleep` reads sleep hooks from `/usr/lib/systemd/system-sleep/` and nowhere
+else.** There is no `/etc` search path, and a hook placed there is silently ignored —
+no error, no log line, nothing to find. Established 2026-08-06, three ways:
 
-Post lessons from the same night: **post does not run when the suspend itself fails**
-(a failed attempt can still reset the board to rainbow — re-apply by hand), a fixed
-post-delay **lost the USB re-enumeration race** once (board stayed rainbow after a
-successful suspend), and `openrgb -p` **exits 0 while silently skipping absent
-devices** — so the hook gates the apply on the full device roster (count), not on the
-apply's exit code. Hook output goes to the journal deliberately: the first field
-failure was invisible only because every line ended in `>/dev/null 2>&1`.
+```sh
+strings /usr/lib/systemd/systemd-sleep | grep system-sleep   # → exactly one path, /usr/lib/...
+```
+
+`man 8 systemd-suspend.service` (systemd 261) likewise names only the `/usr/lib` path;
+and the decisive control — the co-resident `/usr/lib` hook `spd5118.sh` demonstrably
+ran on the very suspends where the `/etc` hook emitted nothing (`kernel: spd5118
+8-0051: DDR5 temperature sensor…` at each resume).
+
+This cost a day. The hook was installed to `/etc/systemd/system-sleep/openrgb.sh` on
+2026-08-05 and **never executed once** — every symptom read as an OpenRGB fault was
+simply the absence of any hook at all. **Retracted with it**, because their only
+evidence was the behaviour of a script that never ran:
+
+- the suspend abort ("Wakeup pending" + spurious PCIe PME) blamed on the unscoped
+  pre-hook — that version was also in `/etc`, so it cannot have aborted anything; the
+  PME source is unidentified and unrelated to this file;
+- "the unscoped pre set nothing because detection hung on the GPU" — it set nothing
+  because it never ran;
+- "post does not run when the suspend itself fails" — never observed, unfounded;
+- "a fixed post-delay lost the USB re-enumeration race" — never observed, unfounded.
+
+**The sign to recognise next time:** a sleep hook that produces *zero* journal output
+is not a failing hook, it is an unexecuted one. Grep the journal for the hook's own
+messages before debugging anything the hook does — and note that a grep finding
+nothing proves nothing until it has matched a run that *did* happen (see the measured
+trace below for what a live one looks like).
+
+The detector scope survives the retraction on design grounds: pre has no business
+beyond the DIMMs — the board and GPU lose power in S3 and go dark on their own, and
+full detection would touch a GPU the `nvidia` hook (alphabetically earlier) has
+already prepared for suspend. Verified: scoped `--list-devices` shows exactly the two
+sticks, and the scoped black leaves board/GPU lit. After an OpenRGB update, **new
+detectors are unlisted and default ON** — re-verify with
+`openrgb --config ~/.config/OpenRGB-sleep --list-devices` (must list exactly the two
+DIMMs).
+
+The apply is gated on the device **roster count**, not on the apply's exit code,
+because `openrgb -p` exits 0 while silently skipping absent devices (mechanism below).
+Hook output is deliberately not silenced — it is the only evidence the hook leaves.
 
 The s2idle fallback error in the journal (`amdgpu … BIOS has not been configured for
 suspend-to-idle`) is environmental — this machine sleeps `deep`, the fallback can
-never work, ignore it. After an OpenRGB update, **new detectors are unlisted and
-default ON** — re-verify the scope:
-`openrgb --config ~/.config/OpenRGB-sleep --list-devices` must list exactly the two
-DIMMs.
+never work, ignore it.
+
+## What a working cycle looks like (measured 2026-08-06)
+
+Journal from a live `systemctl suspend`, hook running from `/usr/lib`:
+
+| offset | journal line | meaning |
+|---|---|---|
+| −2 s | `systemd-sleep[…]: Connection attempt failed` | pre ran; DIMMs written black |
+| 0 | `kernel: PM: suspend entry (deep)` | |
+| +15 s | `kernel: PM: suspend exit` | resume |
+| +24 s | `Connection attempt failed` / **`Profile loaded successfully`** | post applied the profile |
+
+So **~9 seconds of firmware rainbow after resume is normal and expected**, not a
+failure: post sleeps 5 s before its first roster check (USB re-enumeration), then
+`openrgb -l` costs a few seconds more. No `post waiting` line appeared — the full
+4-device roster was back on the *first* check, so the fixed 5 s sleep dominates, not
+the retry loop. Pre costs ~2 s of added suspend-entry latency.
+
+Read it back with:
+
+```sh
+journalctl -b -o short-iso | grep -iE 'openrgb|systemd-sleep|PM: suspend'
+```
 
 Both artifacts are **owned and deployed by the dotfiles repo** (`dot apply`); this doc
 carries the why, not a copy.
 
-Verify: sleep the machine — everything dark, RAM included. Wake it — profile colors,
-no rainbow.
+Verify: sleep the machine — everything dark, RAM included. Wake it — rainbow for ~9 s
+while post waits out USB re-enumeration, then profile colors. Confirmed end-to-end
+2026-08-06. The hook's two halves can also be exercised without suspending:
+
+```fish
+sudo /usr/lib/systemd/system-sleep/openrgb.sh pre suspend    # RAM goes dark at once
+sudo /usr/lib/systemd/system-sleep/openrgb.sh post suspend   # ~5 s, then profile back
+```
 
 ## Reading the saved colors back
 
@@ -87,9 +135,14 @@ half didn't restore the other devices' state.
 `openrgb -p` matches profile entries to detected devices on stored identity data
 (name **and** location strings — hidraw paths, i2c bus numbers). When enumeration
 drifts (BIOS update, kernel change), the entry stops matching and the apply **skips
-that device while still printing "Profile loaded successfully"**. Observed 2026-08-05:
-the RAM (stable `/dev/i2c-8` address) applied; the ASUS board and GPU were silently
-skipped, leaving "RAM blue, everything else off/rainbow".
+that device while still printing "Profile loaded successfully"**.
+
+⚠️ The 2026-08-05 incident once cited here as an instance ("RAM blue, everything else
+off/rainbow") is **no longer good evidence** — that is character-for-character what
+the missing sleep hook produced, so the two cannot be told apart after the fact. The
+matching mechanism is real and the roster gate rests on it; treat the incident as
+unattributed. A genuine instance shows `openrgb -l` returning fewer than the 4
+expected devices, or one at a location string the `.orp` does not contain.
 
 The sign: a partial apply with a success message. The fix: open the GUI, set all
 devices, re-save the profile under the same name. The sleep hook's dark half is immune
