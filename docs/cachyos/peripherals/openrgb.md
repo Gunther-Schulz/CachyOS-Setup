@@ -30,7 +30,24 @@ Verified at build time against colors set by hand minutes earlier, and it refuse
 re-verify against a known color after any OpenRGB format-version bump. Caveat: the
 white-only GPU is driven by a brightness field the tool does not parse, so its color
 row is meaningless. First run immediately caught a real mismatch: the two sticks had
-been saved as `0623FF` and `001EFF` — visually indistinguishable blues.
+been saved as `0623FF` and `001EFF` — visually indistinguishable blues (since unified).
+
+## Adjusting a color without the GUI (proven workflow)
+
+One invocation: load the profile (restores every device's saved state, brightness
+included), override just the target device, save back:
+
+```fish
+openrgb -p "my profile" -d 1 -m direct -c 0623FF -sp "my profile"
+./tools/openrgb-profile-colors.py    # verify the write took
+```
+
+Two traps, both hit while proving this: `-sp` **appends `.orp` itself** — pass the
+bare name, or the save lands in `<name>.orp.orp` and the real profile silently keeps
+its old content (the reader then "refutes" a save that simply went elsewhere — check
+*which file* you are reading before concluding). And the byte-diff of a correct save
+is confined to the changed device's color channels — anything larger means the load
+half didn't restore the other devices' state.
 
 ## ⚠️ The silent failure mode: a profile apply that skips devices
 
