@@ -8,8 +8,29 @@ during sleep. Three pieces, each carrying one mechanism:
 | piece | what it does | mechanism it handles |
 |---|---|---|
 | dotfiles `desktop/openrgb-apply-profile.desktop` | applies `my profile` at login | controllers hold whatever they were last told — someone has to tell them |
-| dotfiles `desktop/openrgb-sleep.sh` → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** all devices → black, **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
+| dotfiles `desktop/openrgb-sleep.sh` → `/etc/systemd/system-sleep/openrgb.sh` | **pre:** DIMMs → black (scoped, see below), **post:** re-apply `my profile` | DIMM RGB keeps standby power in S3 (stays lit unless told black); motherboard/GPU controllers lose power and wake in firmware rainbow |
+| dotfiles `desktop/openrgb-sleep-detectors.json` → `~/.config/OpenRGB-sleep/OpenRGB.json` | scopes the pre-hook: every detector off except Corsair DRAM | pre must touch **only** what stays powered in S3 — see the suspend abort below |
 | the profile itself (`~/.config/OpenRGB/my profile.orp`) | the desired awake state | must contain **all** devices — see the failure mode below |
+
+## ⚠️ Why the pre-hook is scoped to the DIMMs — a suspend abort
+
+The first, unscoped pre-hook ran full device detection (GPU i2c, USB Aura hidraw)
+seconds before suspend entry — and the first suspend after its install **aborted**
+("Wakeup pending. Abort CPU freeze" + a spurious PCIe PME), while the suspend an hour
+earlier, without the hook, had worked. n=1 and circumstantial — but pre never had
+business beyond the DIMMs anyway: the board and GPU **lose power in S3 and go dark on
+their own**; only the RAM keeps standby power. The scoped detector config makes pre
+touch only the SMBus DIMMs (verified: scoped `--list-devices` shows exactly the two
+sticks; the scoped black leaves board/GPU lit). **Falsification path:** if a suspend
+aborts *with* the scoped hook, the hook was not the cause — hunt the PME source, not
+this file. Two side-facts from the same incident: **post does not run when the suspend
+itself fails** (a failed attempt can still reset the board to rainbow — re-apply by
+hand), and the s2idle fallback error in the journal (`amdgpu … BIOS has not been
+configured for suspend-to-idle`) is environmental — this machine sleeps `deep`, the
+fallback can never work, ignore it. After an OpenRGB update, **new detectors are
+unlisted and default ON** — re-verify the scope:
+`openrgb --config ~/.config/OpenRGB-sleep --list-devices` must list exactly the two
+DIMMs.
 
 Both artifacts are **owned and deployed by the dotfiles repo** (`dot apply`); this doc
 carries the why, not a copy.
