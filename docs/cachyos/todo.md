@@ -1146,6 +1146,21 @@
   - **Before measuring:** confirm the Vibelink is not applying EQ/tone/room DSP of its own to the **optical** input (WiiM Home app). Unknown as of 2026-08-03. A curve measured through an unknown downstream EQ corrects the wrong system, and two EQs stacked silently is unfalsifiable by ear.
   - **After inserting the filter sink:** confirm rate-following survives it — an EQ sink that pins the graph to 48 kHz quietly re-introduces the 44.1 → 48 resample that `99-clock-rates.conf` exists to remove. Play a 16/44.1 source through the EQ sink, then `pw-metadata -n settings | grep clock.rate` and `cat /proc/asound/card2/pcm*p/sub0/hw_params`. If it does pin: correction still wins that trade, but record it as a made decision in `audio/sample-rates.md`, not a surprise.
 - **Desktop — experiment, unproven:** upsample 44.1 → 88.2 on the PC (soxr; `ffmpeg` here is built `--enable-libsoxr`, `mpv` not installed) to relax the Vibelink's **fixed** ES9039Q2M reconstruction filter — linear phase fast roll-off, not user-selectable, confirmed by WiiM Oct 2025. At 44.1 the filter works in a 20–22.05 kHz window; at 88.2 it gets 20–44.1 kHz, so its pre-ringing moves out of reach. 176.4 is not an option — the ALC1220P does not offer it. Pre-ringing audibility is genuinely contested; this is a free A/B, not a known win.
+- **Laptop — PARKED: VRR root-cause recheck (operator, 2026-08-05: "not sure we ever
+  proved this").** The [laptop VRR doc](laptop/gnome-vrr-external-monitor-hybrid.md)
+  holds a measured `vrr_capable=0` (modetest, recorded) wearing an unverified why —
+  the NVIDIA-auto-validation-rejects-USB-C-DP story comes from a forum thread about a
+  different monitor, and the reading has an uncontrolled confound: the XG27JCG is
+  dual-mode, and neither the mode (5K/180 vs 2K/330) nor the OSD Adaptive-Sync state
+  at read time was recorded — a monitor not advertising VRR in its EDID at that moment
+  gets an honest 0 with validation policy playing no part. Missing evidence, one
+  battery on the laptop: with OSD Adaptive-Sync confirmed ON for that input, read
+  `vrr_capable` in **both** dual-modes (`modetest -M nvidia-drm -c`), recording driver
+  version. Still 0 in both → the link/validation hypothesis strengthens (then check
+  current driver release notes for a Wayland override). 1 in either → the old reading
+  was the monitor's state, not the driver's policy, and the doc's root-cause section
+  is wrong. Done when: the doc's "why" carries the battery's readings as its basis.
+
 - **Laptop — TRIAL:** Apple Music lossless via Waydroid. Native Linux caps at high-bitrate AAC (Cider/Sidra/web — FairPlay withholds ALAC from MusicKit); the Android app in Waydroid is the only proven Linux software path — 24-bit/48 kHz, the standard-lossless tier ([confirmed setup walkthrough](https://ivonblog.com/en-us/posts/play-apple-music-android-on-linux/)); Hi-Res 96/192 is architecturally out (Waydroid resamples to 48 kHz at the Linux boundary). Wine can't (no WebView2/DRM path); Windows VM rejected (operator).
   History: an earlier Waydroid install on this laptop broke host stuff randomly (file manager among it; symptoms not recorded). Both known breakage classes have root-cause fixes below — applied **before** first launch, not reactively. Preflight verified on lappy 2026-07-26: kernel `7.1.4-1-cachyos` (binder built-in — all CachyOS kernels except hardened; `grep -i binder /proc/filesystems` → present), IPv6 on (Waydroid needs it), nftables/Docker services inactive (their conflict class absent), `waydroid 1.6.3` in extra repo, not currently installed. **ufw is the active firewall → prime suspect for the old breakage** (default deny on forwarded traffic vs Waydroid's inserted rules). Desktop: unverified, re-run preflight there before trying.
   1. Snapshot infra FIRST — **auto-snapshots are NOT active on lappy** (verified 2026-07-26: `snapper` + `btrfs-assistant` installed, but `snap-pac` missing and `snapper-timeline`/`snapper-cleanup` timers disabled → pacman transactions snapshot nothing). Fix is independent of this trial and worth doing regardless:

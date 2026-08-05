@@ -22,7 +22,18 @@ modetest -M nvidia-drm -c | grep -A3 vrr_capable   # value: 0  on the connected 
 modetest -M amdgpu    -c | grep -A3 vrr_capable   # value: 1  on the connected eDP-2
 ```
 
-NVIDIA only sets `vrr_capable=1` for a display it has auto-validated as "G-SYNC Compatible" over that link, or where the user manually ticks "Allow G-SYNC on a monitor not validated as G-SYNC Compatible" — a toggle that only exists in **`nvidia-settings`, which is X11-only**; this laptop is Wayland-only, so there's no supported way to flip it. The desktop gets VRR because that monitor sits on a native DisplayPort straight off the GPU; on the laptop the external display reaches the NVIDIA GPU over **USB-C DisplayPort-alt-mode** (this chassis has no full-size DP) — exactly the kind of link NVIDIA's auto-validation tends to reject. So it's the display wiring, not the weaker GPU. ([NVIDIA forum thread](https://forums.developer.nvidia.com/t/g-sync-compatible-monitor-not-detected-as-vrr-capable-24g2w1g4/237332))
+**Why it reports 0 — leading hypothesis, unverified.** NVIDIA sets `vrr_capable=1` only
+for displays it auto-validates as "G-SYNC Compatible" over that link (the manual
+override lives in `nvidia-settings`, X11-only; this laptop is Wayland-only). Here the
+external display reaches the NVIDIA GPU over **USB-C DP-alt-mode** (no full-size DP on
+this chassis) — a link class auto-validation reportedly rejects
+([forum thread](https://forums.developer.nvidia.com/t/g-sync-compatible-monitor-not-detected-as-vrr-capable-24g2w1g4/237332),
+different monitor). That story was never tested against this monitor, and the reading
+has an **uncontrolled confound**: the XG27JCG is dual-mode (5K/180 ↔ 2K/330), and the
+monitor's mode and OSD Adaptive-Sync state at read time were not recorded — a monitor
+not advertising VRR in its EDID at that moment gets an honest `vrr_capable=0` with
+NVIDIA's validation policy playing no part. Recheck parked in
+[todo](../todo.md) with the controlled battery.
 
 Ruled out (don't re-investigate): Mutter primary GPU (no effect — see below), GDM-on-X11 (greeter runs Wayland here), non-atomic KMS (both GPUs use atomic), and driver/hardware capability (Ada + a current NVIDIA driver clears the ≥Volta / ≥525 Wayland-VRR floor).
 
